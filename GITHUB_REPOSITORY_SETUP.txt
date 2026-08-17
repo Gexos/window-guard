@@ -1,0 +1,38 @@
+WINDOW GUARD - GITHUB REPOSITORY SETUP
+========================================
+
+Repository name:
+    window-guard
+
+Description:
+    Open-source Windows app locker that protects selected applications with a PIN.
+
+Topics:
+    windows
+    python
+    privacy
+    app-locker
+    security
+    desktop-app
+    system-tray
+    open-source
+    pystray
+
+First release:
+    v0.3.0 - Early Preview
+
+Suggested steps:
+1. Create a new GitHub repository named "window-guard".
+2. Do not initialize it with another README or license.
+3. Upload all files and folders from this package.
+4. Commit with:
+       Initial public release of Window Guard v0.3.0
+5. Create a GitHub Release with tag:
+       v0.3.0
+6. Release title:
+       Window Guard v0.3.0 - Early Preview
+7. Use RELEASE_NOTES_v0.3.0.md as the release notes.
+8. Build WindowGuard.exe on Windows.
+9. Run hash_release.bat.
+10. Attach WindowGuard.exe and SHA256SUMS.txt to the release.
+11. Add screenshots later under docs/screenshots/.
