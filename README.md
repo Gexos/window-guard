@@ -185,4 +185,4 @@ Window Guard is released under the [MIT License](LICENSE).
 
 ## Author
 
-gexos
+Giorgos Xanthopoulos aka gexos
