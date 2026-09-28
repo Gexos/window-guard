@@ -1,16 +1,31 @@
 # Contributing
 
-Contributions are welcome.
+Contributions to Window Guard are welcome.
 
-Useful contributions include bug fixes, Windows compatibility improvements, UI improvements, better application detection, safer configuration handling, documentation, tests, and reproducible bug reports.
+Good contributions include bug fixes, Windows compatibility improvements, UI improvements, application-detection improvements, documentation, tests, and reproducible bug reports.
 
-Before submitting a pull request:
+## Bug Reports
+
+Please use the GitHub **Bug report** form. Include:
+
+- Windows version
+- Window Guard version
+- Source or EXE build
+- Application being protected
+- Steps to reproduce
+- Expected behavior
+- Actual behavior
+- Relevant diagnostic output, after reviewing it for private information
+
+## Feature Requests
+
+Use the GitHub **Feature request** form and explain the problem the feature would solve.
+
+## Pull Requests
 
 1. Keep changes focused.
 2. Test on Windows.
 3. Avoid unnecessary dependencies.
 4. Preserve the documented security limitations.
-5. Do not claim administrator-proof security.
-6. Update the changelog when appropriate.
-
-For bug reports, include the Windows version, Window Guard version, whether you ran from Python or the EXE, the protected application, whether it ran as administrator, and relevant diagnostic output.
+5. Update documentation and the changelog when appropriate.
+6. Do not claim Window Guard is administrator-proof.

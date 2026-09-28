@@ -1,2328 +1,707 @@
-"""
-Window Guard v0.3.0
-
-Windows privacy/convenience utility that can protect multiple running
-applications with one PIN.
-
-Main features:
-- Select real running applications by visible window.
-- Protect multiple applications.
-- Lock Now hides currently visible protected windows.
-- While locked, newly opened protected windows are hidden automatically.
-- Unlock restores windows with the correct PIN.
-- System tray controls.
-- Optional Start with Windows.
-- Salted PBKDF2-HMAC-SHA256 PIN storage.
-
-This is not a replacement for Windows account security.
-"""
-
+"""Window Guard v0.5.0 - persistent per-app PIN locking for Windows with GitHub integration."""
 from __future__ import annotations
 
-import base64
-import ctypes
+import base64, ctypes, hashlib, hmac, json, os, secrets, sys, threading, time, uuid, winreg, webbrowser
 from ctypes import wintypes
-import hashlib
-import hmac
-import json
-import os
 from pathlib import Path
-import secrets
-import subprocess
-import sys
-import threading
-import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
-import winreg
 
 try:
     import pystray
     from PIL import Image, ImageDraw
 except ImportError:
     pystray = None
-    Image = None
-    ImageDraw = None
-
+    Image = ImageDraw = None
 
 APP_NAME = "Window Guard"
-APP_VERSION = "0.3.0"
-CONFIG_VERSION = 3
-
+APP_VERSION = "0.5.0"
+CONFIG_VERSION = 4
 PBKDF2_ITERATIONS = 310_000
-
-SW_HIDE = 0
-SW_SHOW = 5
-
+MONITOR_MS = 350
+FAILED_LIMIT = 3
+COOLDOWN_SECONDS = 15
+SW_HIDE, SW_SHOW = 0, 5
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 TH32CS_SNAPPROCESS = 0x00000002
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_VALUE = "WindowGuard"
 
-STARTUP_REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-STARTUP_VALUE_NAME = "WindowGuard"
+GITHUB_REPO_URL = "https://github.com/gexos/window-guard"
+GITHUB_RELEASES_URL = GITHUB_REPO_URL + "/releases"
+GITHUB_LATEST_RELEASE_URL = GITHUB_REPO_URL + "/releases/latest"
+GITHUB_ISSUES_URL = GITHUB_REPO_URL + "/issues"
+GITHUB_NEW_ISSUE_URL = GITHUB_REPO_URL + "/issues/new/choose"
 
-
-def require_windows() -> None:
-    if os.name != "nt":
-        raise SystemExit("Window Guard runs only on Windows.")
-
-
-require_windows()
+if os.name != "nt":
+    raise SystemExit("Window Guard runs only on Windows.")
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-WNDENUMPROC = ctypes.WINFUNCTYPE(
-    wintypes.BOOL,
-    wintypes.HWND,
-    wintypes.LPARAM,
-)
-
+WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 class PROCESSENTRY32W(ctypes.Structure):
     _fields_ = [
-        ("dwSize", wintypes.DWORD),
-        ("cntUsage", wintypes.DWORD),
-        ("th32ProcessID", wintypes.DWORD),
-        ("th32DefaultHeapID", ctypes.c_size_t),
-        ("th32ModuleID", wintypes.DWORD),
-        ("cntThreads", wintypes.DWORD),
-        ("th32ParentProcessID", wintypes.DWORD),
-        ("pcPriClassBase", wintypes.LONG),
-        ("dwFlags", wintypes.DWORD),
-        ("szExeFile", wintypes.WCHAR * 260),
+        ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", wintypes.LONG),
+        ("dwFlags", wintypes.DWORD), ("szExeFile", wintypes.WCHAR * 260),
     ]
-
 
 user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
 user32.EnumWindows.restype = wintypes.BOOL
-
 user32.IsWindow.argtypes = [wintypes.HWND]
 user32.IsWindow.restype = wintypes.BOOL
-
 user32.IsWindowVisible.argtypes = [wintypes.HWND]
 user32.IsWindowVisible.restype = wintypes.BOOL
-
 user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.ShowWindow.restype = wintypes.BOOL
-
-user32.GetWindowThreadProcessId.argtypes = [
-    wintypes.HWND,
-    ctypes.POINTER(wintypes.DWORD),
-]
+user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 user32.GetWindowThreadProcessId.restype = wintypes.DWORD
-
 user32.SetForegroundWindow.argtypes = [wintypes.HWND]
 user32.SetForegroundWindow.restype = wintypes.BOOL
-
 user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
 user32.GetWindowTextLengthW.restype = ctypes.c_int
-
-user32.GetWindowTextW.argtypes = [
-    wintypes.HWND,
-    wintypes.LPWSTR,
-    ctypes.c_int,
-]
+user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.GetWindowTextW.restype = ctypes.c_int
-
-kernel32.OpenProcess.argtypes = [
-    wintypes.DWORD,
-    wintypes.BOOL,
-    wintypes.DWORD,
-]
+kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
 kernel32.OpenProcess.restype = wintypes.HANDLE
-
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CloseHandle.restype = wintypes.BOOL
-
-kernel32.QueryFullProcessImageNameW.argtypes = [
-    wintypes.HANDLE,
-    wintypes.DWORD,
-    wintypes.LPWSTR,
-    ctypes.POINTER(wintypes.DWORD),
-]
+kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
 kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
-
-kernel32.CreateToolhelp32Snapshot.argtypes = [
-    wintypes.DWORD,
-    wintypes.DWORD,
-]
+kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
 kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-
-kernel32.Process32FirstW.argtypes = [
-    wintypes.HANDLE,
-    ctypes.POINTER(PROCESSENTRY32W),
-]
+kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
 kernel32.Process32FirstW.restype = wintypes.BOOL
-
-kernel32.Process32NextW.argtypes = [
-    wintypes.HANDLE,
-    ctypes.POINTER(PROCESSENTRY32W),
-]
+kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
 kernel32.Process32NextW.restype = wintypes.BOOL
 
+APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / "WindowGuard"
+CONFIG_FILE = APPDATA / "config.json"
 
-def get_config_directory() -> Path:
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        return Path(appdata) / "WindowGuard"
-    return Path.home() / ".window_guard"
-
-
-CONFIG_DIR = get_config_directory()
-CONFIG_FILE = CONFIG_DIR / "config.json"
-
-
-def normalize_path(path: str | Path) -> str:
+def norm(path: str | Path) -> str:
     return os.path.normcase(os.path.abspath(os.fspath(path)))
 
-
-def get_process_image_path(pid: int) -> str | None:
-    handle = kernel32.OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION,
-        False,
-        pid,
-    )
-    if not handle:
+def process_path(pid: int) -> str | None:
+    h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h:
         return None
-
     try:
         size = wintypes.DWORD(32768)
-        buffer = ctypes.create_unicode_buffer(size.value)
-
-        if not kernel32.QueryFullProcessImageNameW(
-            handle,
-            0,
-            buffer,
-            ctypes.byref(size),
-        ):
-            return None
-
-        return buffer.value
+        buf = ctypes.create_unicode_buffer(size.value)
+        return buf.value if kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) else None
     finally:
-        kernel32.CloseHandle(handle)
+        kernel32.CloseHandle(h)
 
+def own_path() -> str:
+    return norm(sys.executable if getattr(sys, "frozen", False) else Path(__file__).resolve())
 
-def current_program_path() -> str:
-    if getattr(sys, "frozen", False):
-        return normalize_path(sys.executable)
-    return normalize_path(Path(__file__).resolve())
-
-
-def get_window_title(hwnd: int) -> str:
-    length = user32.GetWindowTextLengthW(hwnd)
-    if length <= 0:
+def window_title(hwnd: int) -> str:
+    n = user32.GetWindowTextLengthW(hwnd)
+    if n <= 0:
         return ""
+    buf = ctypes.create_unicode_buffer(n + 1)
+    user32.GetWindowTextW(hwnd, buf, n + 1)
+    return buf.value
 
-    buffer = ctypes.create_unicode_buffer(length + 1)
-    user32.GetWindowTextW(hwnd, buffer, length + 1)
-    return buffer.value
-
-
-def get_window_pid(hwnd: int) -> int:
+def window_pid(hwnd: int) -> int:
     pid = wintypes.DWORD()
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
     return int(pid.value)
 
-
-def get_running_processes() -> dict[int, dict]:
-    snapshot = kernel32.CreateToolhelp32Snapshot(
-        TH32CS_SNAPPROCESS,
-        0,
-    )
-
-    invalid_handle = ctypes.c_void_p(-1).value
-    if not snapshot or snapshot == invalid_handle:
+def processes() -> dict[int, dict]:
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snap or snap == ctypes.c_void_p(-1).value:
         return {}
-
-    processes: dict[int, dict] = {}
-
+    result = {}
     try:
-        entry = PROCESSENTRY32W()
-        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-
-        if not kernel32.Process32FirstW(
-            snapshot,
-            ctypes.byref(entry),
-        ):
-            return processes
-
+        e = PROCESSENTRY32W(); e.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not kernel32.Process32FirstW(snap, ctypes.byref(e)):
+            return result
         while True:
-            processes[int(entry.th32ProcessID)] = {
-                "name": entry.szExeFile,
-                "parent_pid": int(entry.th32ParentProcessID),
-            }
-
-            entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-
-            if not kernel32.Process32NextW(
-                snapshot,
-                ctypes.byref(entry),
-            ):
+            result[int(e.th32ProcessID)] = {"name": e.szExeFile, "parent": int(e.th32ParentProcessID)}
+            e.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+            if not kernel32.Process32NextW(snap, ctypes.byref(e)):
                 break
-
     finally:
-        kernel32.CloseHandle(snapshot)
+        kernel32.CloseHandle(snap)
+    return result
 
-    return processes
-
-
-def get_descendant_pids(
-    processes: dict[int, dict],
-    root_pids: set[int],
-) -> set[int]:
-    descendants = set(root_pids)
+def descendants(procs: dict[int, dict], roots: set[int]) -> set[int]:
+    out = set(roots)
     changed = True
-
     while changed:
         changed = False
+        for pid, info in procs.items():
+            if pid not in out and info.get("parent") in out:
+                out.add(pid); changed = True
+    return out
 
-        for pid, info in processes.items():
-            if pid in descendants:
-                continue
-
-            if info.get("parent_pid") in descendants:
-                descendants.add(pid)
-                changed = True
-
-    return descendants
-
-
-def get_target_pids_for_app(
-    app: dict,
-    processes: dict[int, dict] | None = None,
-) -> set[int]:
-    if processes is None:
-        processes = get_running_processes()
-
+def target_pids(app: dict, procs: dict[int, dict] | None = None) -> set[int]:
+    procs = procs or processes()
     wanted_name = str(app.get("name", "")).casefold()
     wanted_path = str(app.get("path", "")).strip()
-
-    exact_path_pids: set[int] = set()
-    name_pids: set[int] = set()
-
-    for pid, info in processes.items():
-        if pid == os.getpid():
+    same_name, exact = set(), set()
+    for pid, info in procs.items():
+        if pid == os.getpid() or str(info.get("name", "")).casefold() != wanted_name:
             continue
+        same_name.add(pid)
+        if wanted_path:
+            p = process_path(pid)
+            if p:
+                try:
+                    if norm(p) == norm(wanted_path):
+                        exact.add(pid)
+                except (OSError, ValueError):
+                    pass
+    roots = exact or same_name
+    return descendants(procs, roots) if roots else set()
 
-        exe_name = str(info.get("name", ""))
-
-        if wanted_name and exe_name.casefold() == wanted_name:
-            name_pids.add(pid)
-
-            if wanted_path:
-                actual_path = get_process_image_path(pid)
-
-                if actual_path:
-                    try:
-                        if normalize_path(actual_path) == normalize_path(
-                            wanted_path
-                        ):
-                            exact_path_pids.add(pid)
-                    except (OSError, ValueError):
-                        pass
-
-    roots = exact_path_pids or name_pids
-
-    if not roots:
-        return set()
-
-    return get_descendant_pids(processes, roots)
-
-
-def enumerate_windows_for_app(
-    app: dict,
-    visible_only: bool = True,
-    processes: dict[int, dict] | None = None,
-) -> list[int]:
-    if processes is None:
-        processes = get_running_processes()
-
-    target_pids = get_target_pids_for_app(app, processes)
-
-    if not target_pids:
+def app_windows(app: dict, visible_only=True, procs=None) -> list[int]:
+    procs = procs or processes()
+    pids = target_pids(app, procs)
+    if not pids:
         return []
-
-    found: list[int] = []
-
+    found = []
     @WNDENUMPROC
-    def callback(hwnd: int, _lparam: int) -> bool:
-        if not user32.IsWindow(hwnd):
-            return True
-
-        if visible_only and not user32.IsWindowVisible(hwnd):
-            return True
-
-        if get_window_pid(hwnd) in target_pids:
-            found.append(int(hwnd))
-
+    def cb(hwnd, _):
+        if not user32.IsWindow(hwnd): return True
+        if visible_only and not user32.IsWindowVisible(hwnd): return True
+        if window_pid(hwnd) in pids: found.append(int(hwnd))
         return True
-
-    user32.EnumWindows(callback, 0)
+    user32.EnumWindows(cb, 0)
     return found
 
-
-def enumerate_selectable_applications() -> list[dict]:
-    processes = get_running_processes()
-    own_pid = os.getpid()
-
-    items: list[dict] = []
-
+def visible_apps() -> list[dict]:
+    procs = processes(); own = os.getpid(); out = []
     @WNDENUMPROC
-    def callback(hwnd: int, _lparam: int) -> bool:
-        if not user32.IsWindow(hwnd):
-            return True
-
-        if not user32.IsWindowVisible(hwnd):
-            return True
-
-        title = get_window_title(hwnd).strip()
-
-        if not title:
-            return True
-
-        pid = get_window_pid(hwnd)
-
-        if pid == 0 or pid == own_pid:
-            return True
-
-        info = processes.get(pid, {})
-        exe_name = str(info.get("name", "?"))
-        process_path = get_process_image_path(pid) or ""
-
-        items.append(
-            {
-                "hwnd": int(hwnd),
-                "pid": pid,
-                "title": title,
-                "name": exe_name,
-                "path": process_path,
-            }
-        )
-
+    def cb(hwnd, _):
+        if not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd): return True
+        title = window_title(hwnd).strip()
+        if not title: return True
+        pid = window_pid(hwnd)
+        if not pid or pid == own: return True
+        info = procs.get(pid, {})
+        out.append({"pid": pid, "title": title, "name": str(info.get("name", "?")), "path": process_path(pid) or ""})
         return True
+    user32.EnumWindows(cb, 0)
+    return sorted(out, key=lambda x: (x["title"].casefold(), x["name"].casefold(), x["pid"]))
 
-    user32.EnumWindows(callback, 0)
+def hide(hwnd: int) -> bool:
+    if not user32.IsWindow(hwnd): return False
+    user32.ShowWindow(hwnd, SW_HIDE); return True
 
-    items.sort(
-        key=lambda item: (
-            item["title"].casefold(),
-            item["name"].casefold(),
-            item["pid"],
-        )
-    )
+def show(hwnd: int) -> bool:
+    if not user32.IsWindow(hwnd): return False
+    user32.ShowWindow(hwnd, SW_SHOW); return True
 
-    return items
+def app_id(name: str, path: str) -> str:
+    return hashlib.sha256(f"{name.casefold()}|{path.casefold()}".encode()).hexdigest()[:16]
 
+def default_config():
+    return {"config_version": CONFIG_VERSION, "pin": None, "protected_apps": [], "start_with_windows": False}
 
-def hide_window(hwnd: int) -> bool:
-    if not user32.IsWindow(hwnd):
-        return False
+def save_config(cfg):
+    APPDATA.mkdir(parents=True, exist_ok=True)
+    tmp = CONFIG_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    tmp.replace(CONFIG_FILE)
 
-    user32.ShowWindow(hwnd, SW_HIDE)
-    return True
-
-
-def show_window(hwnd: int) -> bool:
-    if not user32.IsWindow(hwnd):
-        return False
-
-    user32.ShowWindow(hwnd, SW_SHOW)
-    return True
-
-
-def default_config() -> dict:
-    return {
-        "config_version": CONFIG_VERSION,
-        "pin": None,
-        "protected_apps": [],
-        "locked": False,
-        "hidden_handles": [],
-        "start_with_windows": False,
-    }
-
-
-def migrate_config(config: dict) -> dict:
-    """
-    Migrate configuration from earlier Window Guard versions.
-
-    v0.1/v0.2 used a single target_path. v0.3 uses protected_apps.
-    """
-    if "protected_apps" not in config:
-        config["protected_apps"] = []
-
-    old_target = str(config.get("target_path", "")).strip()
-
-    if old_target and not config["protected_apps"]:
-        config["protected_apps"].append(
-            {
-                "name": Path(old_target).name,
-                "path": old_target,
-            }
-        )
-
-    config["config_version"] = CONFIG_VERSION
-    config.setdefault("pin", None)
-    config.setdefault("locked", False)
-    config.setdefault("hidden_handles", [])
-    config.setdefault("start_with_windows", False)
-
-    return config
-
-
-def load_config() -> dict:
-    config = default_config()
-
+def load_config():
+    cfg = default_config()
     if CONFIG_FILE.exists():
         try:
-            loaded = json.loads(
-                CONFIG_FILE.read_text(encoding="utf-8")
-            )
-
-            if isinstance(loaded, dict):
-                config.update(loaded)
-
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict): cfg.update(data)
         except (OSError, json.JSONDecodeError):
             pass
+    apps = cfg.get("protected_apps") if isinstance(cfg.get("protected_apps"), list) else []
+    old = str(cfg.get("target_path", "")).strip()
+    if old and not apps: apps = [{"name": Path(old).name, "path": old}]
+    migrated = []
+    for a in apps:
+        if not isinstance(a, dict): continue
+        name, path = str(a.get("name", "")).strip(), str(a.get("path", "")).strip()
+        if not name and path: name = Path(path).name
+        if not name: continue
+        migrated.append({"id": str(a.get("id") or app_id(name, path)), "name": name, "path": path, "relock_on_close": True})
+    cfg = {"config_version": CONFIG_VERSION, "pin": cfg.get("pin"), "protected_apps": migrated, "start_with_windows": bool(cfg.get("start_with_windows", False))}
+    save_config(cfg)
+    return cfg
 
-    return migrate_config(config)
-
-
-def save_config(config: dict) -> None:
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    temporary = CONFIG_FILE.with_suffix(".tmp")
-
-    temporary.write_text(
-        json.dumps(config, indent=2),
-        encoding="utf-8",
-    )
-
-    temporary.replace(CONFIG_FILE)
-
-
-def create_pin_record(pin: str) -> dict:
+def make_pin(pin: str) -> dict:
     salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, PBKDF2_ITERATIONS)
+    return {"algorithm": "pbkdf2_hmac_sha256", "iterations": PBKDF2_ITERATIONS, "salt": base64.b64encode(salt).decode(), "hash": base64.b64encode(digest).decode()}
 
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
-        pin.encode("utf-8"),
-        salt,
-        PBKDF2_ITERATIONS,
-    )
-
-    return {
-        "algorithm": "pbkdf2_hmac_sha256",
-        "iterations": PBKDF2_ITERATIONS,
-        "salt": base64.b64encode(salt).decode("ascii"),
-        "hash": base64.b64encode(digest).decode("ascii"),
-    }
-
-
-def verify_pin(pin: str, record: dict | None) -> bool:
-    if not isinstance(record, dict):
-        return False
-
+def check_pin(pin: str, rec: dict | None) -> bool:
+    if not isinstance(rec, dict): return False
     try:
-        iterations = int(record["iterations"])
-        salt = base64.b64decode(
-            record["salt"],
-            validate=True,
-        )
-        expected = base64.b64decode(
-            record["hash"],
-            validate=True,
-        )
-
+        salt = base64.b64decode(rec["salt"], validate=True)
+        expected = base64.b64decode(rec["hash"], validate=True)
+        actual = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, int(rec["iterations"]))
+        return hmac.compare_digest(actual, expected)
     except (KeyError, TypeError, ValueError):
         return False
 
-    actual = hashlib.pbkdf2_hmac(
-        "sha256",
-        pin.encode("utf-8"),
-        salt,
-        iterations,
-    )
+def startup_cmd():
+    if getattr(sys, "frozen", False): return f'"{sys.executable}" --startup'
+    exe = Path(sys.executable); pyw = exe.with_name("pythonw.exe"); runner = pyw if pyw.exists() else exe
+    return f'"{runner}" "{Path(__file__).resolve()}" --startup'
 
-    return hmac.compare_digest(actual, expected)
-
-
-def validate_new_pin(pin: str) -> str | None:
-    if not pin.isdigit():
-        return "The PIN must contain digits only."
-
-    if len(pin) < 4:
-        return "The PIN must contain at least 4 digits."
-
-    if len(pin) > 12:
-        return "The PIN cannot contain more than 12 digits."
-
-    return None
-
-
-def get_startup_command() -> str:
-    if getattr(sys, "frozen", False):
-        return f'"{sys.executable}" --startup'
-
-    script = Path(__file__).resolve()
-    python_exe = Path(sys.executable)
-    pythonw = python_exe.with_name("pythonw.exe")
-
-    runner = pythonw if pythonw.exists() else python_exe
-
-    return f'"{runner}" "{script}" --startup'
-
-
-def set_start_with_windows(enabled: bool) -> None:
-    with winreg.OpenKey(
-        winreg.HKEY_CURRENT_USER,
-        STARTUP_REGISTRY_PATH,
-        0,
-        winreg.KEY_SET_VALUE,
-    ) as key:
-
-        if enabled:
-            winreg.SetValueEx(
-                key,
-                STARTUP_VALUE_NAME,
-                0,
-                winreg.REG_SZ,
-                get_startup_command(),
-            )
+def set_startup(enabled: bool):
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        if enabled: winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, startup_cmd())
         else:
-            try:
-                winreg.DeleteValue(
-                    key,
-                    STARTUP_VALUE_NAME,
-                )
-            except FileNotFoundError:
-                pass
+            try: winreg.DeleteValue(key, RUN_VALUE)
+            except FileNotFoundError: pass
 
-
-def startup_entry_exists() -> bool:
+def startup_exists() -> bool:
     try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            STARTUP_REGISTRY_PATH,
-            0,
-            winreg.KEY_QUERY_VALUE,
-        ) as key:
-
-            winreg.QueryValueEx(
-                key,
-                STARTUP_VALUE_NAME,
-            )
-
-            return True
-
-    except (FileNotFoundError, OSError):
-        return False
-
-
-def create_tray_image():
-    if Image is None or ImageDraw is None:
-        return None
-
-    image = Image.new(
-        "RGB",
-        (64, 64),
-        (32, 38, 46),
-    )
-
-    draw = ImageDraw.Draw(image)
-
-    draw.rounded_rectangle(
-        (14, 26, 50, 55),
-        radius=6,
-        fill=(225, 230, 236),
-    )
-
-    draw.arc(
-        (20, 8, 44, 38),
-        start=180,
-        end=360,
-        fill=(225, 230, 236),
-        width=6,
-    )
-
-    return image
-
-
-class WindowGuardApp:
-    MONITOR_INTERVAL_MS = 400
-    FAILED_ATTEMPT_LIMIT = 3
-    COOLDOWN_SECONDS = 15
-
-    def __init__(
-        self,
-        root: tk.Tk,
-        start_hidden: bool = False,
-    ) -> None:
-        self.root = root
-        self.config = load_config()
-
-        self.locked = bool(self.config.get("locked"))
-
-        self.hidden_handles: set[int] = {
-            int(value)
-            for value in self.config.get(
-                "hidden_handles",
-                [],
-            )
-            if isinstance(value, int)
-            or str(value).isdigit()
-        }
-
-        self.failed_attempts = 0
-        self.cooldown_until = 0.0
-
-        self.lock_window: tk.Toplevel | None = None
-        self.pin_entry: ttk.Entry | None = None
-        self.unlock_button: ttk.Button | None = None
-
-        self.tray_icon = None
-
-        self.status_var = tk.StringVar(
-            value="Ready."
-        )
-
-        self.lock_message_var = tk.StringVar(
-            value="Enter your PIN to unlock."
-        )
-
-        self.startup_var = tk.BooleanVar(
-            value=startup_entry_exists()
-        )
-
-        self._build_main_window()
-        self.refresh_protected_apps()
-
-        self.root.protocol(
-            "WM_DELETE_WINDOW",
-            self.hide_to_tray,
-        )
-
-        self.start_tray_icon()
-
-        if self.locked:
-            self.root.after(
-                150,
-                self.resume_locked_state,
-            )
-        elif start_hidden:
-            self.root.after(
-                100,
-                self.root.withdraw,
-            )
-
-    def _build_main_window(self) -> None:
-        self.root.title(
-            f"{APP_NAME} {APP_VERSION}"
-        )
-
-        self.root.geometry("820x520")
-        self.root.minsize(740, 460)
-
-        main = ttk.Frame(
-            self.root,
-            padding=16,
-        )
-
-        main.pack(
-            fill="both",
-            expand=True,
-        )
-
-        main.columnconfigure(
-            0,
-            weight=1,
-        )
-
-        main.rowconfigure(
-            3,
-            weight=1,
-        )
-
-        ttk.Label(
-            main,
-            text=APP_NAME,
-            font=("Segoe UI", 20, "bold"),
-        ).grid(
-            row=0,
-            column=0,
-            sticky="w",
-        )
-
-        ttk.Label(
-            main,
-            text=(
-                "Protect multiple Windows applications "
-                "with one PIN."
-            ),
-        ).grid(
-            row=1,
-            column=0,
-            sticky="w",
-            pady=(2, 14),
-        )
-
-        toolbar = ttk.Frame(main)
-
-        toolbar.grid(
-            row=2,
-            column=0,
-            sticky="ew",
-            pady=(0, 8),
-        )
-
-        ttk.Button(
-            toolbar,
-            text="Add Running App",
-            command=self.select_running_application,
-        ).pack(
-            side="left",
-        )
-
-        ttk.Button(
-            toolbar,
-            text="Browse EXE...",
-            command=self.browse_application,
-        ).pack(
-            side="left",
-            padx=(8, 0),
-        )
-
-        ttk.Button(
-            toolbar,
-            text="Remove Selected",
-            command=self.remove_selected_app,
-        ).pack(
-            side="left",
-            padx=(8, 0),
-        )
-
-        ttk.Button(
-            toolbar,
-            text="Diagnostics",
-            command=self.show_diagnostics,
-        ).pack(
-            side="right",
-        )
-
-        list_frame = ttk.LabelFrame(
-            main,
-            text="Protected applications",
-            padding=8,
-        )
-
-        list_frame.grid(
-            row=3,
-            column=0,
-            sticky="nsew",
-        )
-
-        list_frame.rowconfigure(
-            0,
-            weight=1,
-        )
-
-        list_frame.columnconfigure(
-            0,
-            weight=1,
-        )
-
-        columns = (
-            "name",
-            "path",
-        )
-
-        self.apps_tree = ttk.Treeview(
-            list_frame,
-            columns=columns,
-            show="headings",
-            selectmode="browse",
-        )
-
-        self.apps_tree.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-        )
-
-        self.apps_tree.heading(
-            "name",
-            text="Executable",
-        )
-
-        self.apps_tree.heading(
-            "path",
-            text="Executable Path",
-        )
-
-        self.apps_tree.column(
-            "name",
-            width=160,
-            minwidth=120,
-        )
-
-        self.apps_tree.column(
-            "path",
-            width=560,
-            minwidth=300,
-        )
-
-        scrollbar = ttk.Scrollbar(
-            list_frame,
-            orient="vertical",
-            command=self.apps_tree.yview,
-        )
-
-        scrollbar.grid(
-            row=0,
-            column=1,
-            sticky="ns",
-        )
-
-        self.apps_tree.configure(
-            yscrollcommand=scrollbar.set
-        )
-
-        actions = ttk.Frame(main)
-
-        actions.grid(
-            row=4,
-            column=0,
-            sticky="ew",
-            pady=(14, 8),
-        )
-
-        ttk.Button(
-            actions,
-            text="Set / Change PIN",
-            command=self.set_or_change_pin,
-        ).pack(
-            side="left",
-        )
-
-        self.lock_button = ttk.Button(
-            actions,
-            text="Lock Now",
-            command=self.lock_now,
-        )
-
-        self.lock_button.pack(
-            side="right",
-        )
-
-        ttk.Checkbutton(
-            main,
-            text="Start Window Guard with Windows",
-            variable=self.startup_var,
-            command=self.toggle_startup,
-        ).grid(
-            row=5,
-            column=0,
-            sticky="w",
-            pady=(2, 8),
-        )
-
-        ttk.Separator(main).grid(
-            row=6,
-            column=0,
-            sticky="ew",
-            pady=(4, 10),
-        )
-
-        ttk.Label(
-            main,
-            textvariable=self.status_var,
-            wraplength=760,
-        ).grid(
-            row=7,
-            column=0,
-            sticky="w",
-        )
-
-        ttk.Label(
-            main,
-            text=(
-                "Closing this window minimizes Window Guard "
-                "to the system tray. Use the tray menu to exit."
-            ),
-            wraplength=760,
-        ).grid(
-            row=8,
-            column=0,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-    def get_protected_apps(self) -> list[dict]:
-        apps = self.config.get(
-            "protected_apps",
-            [],
-        )
-
-        if not isinstance(apps, list):
-            return []
-
-        clean: list[dict] = []
-
-        for app in apps:
-            if not isinstance(app, dict):
-                continue
-
-            name = str(
-                app.get("name", "")
-            ).strip()
-
-            path = str(
-                app.get("path", "")
-            ).strip()
-
-            if name:
-                clean.append(
-                    {
-                        "name": name,
-                        "path": path,
-                    }
-                )
-
-        return clean
-
-    def refresh_protected_apps(self) -> None:
-        for item in self.apps_tree.get_children():
-            self.apps_tree.delete(item)
-
-        for index, app in enumerate(
-            self.get_protected_apps()
-        ):
-            self.apps_tree.insert(
-                "",
-                "end",
-                iid=f"app_{index}",
-                values=(
-                    app["name"],
-                    app["path"],
-                ),
-            )
-
-    def app_is_duplicate(
-        self,
-        name: str,
-        path: str,
-    ) -> bool:
-        wanted_name = name.casefold()
-
-        try:
-            wanted_path = (
-                normalize_path(path)
-                if path
-                else ""
-            )
-        except (OSError, ValueError):
-            wanted_path = ""
-
-        for app in self.get_protected_apps():
-            existing_name = str(
-                app.get("name", "")
-            ).casefold()
-
-            existing_path = str(
-                app.get("path", "")
-            )
-
-            if wanted_path and existing_path:
-                try:
-                    if (
-                        normalize_path(existing_path)
-                        == wanted_path
-                    ):
-                        return True
-                except (OSError, ValueError):
-                    pass
-
-            if (
-                existing_name == wanted_name
-                and not wanted_path
-            ):
-                return True
-
-        return False
-
-    def add_protected_app(
-        self,
-        name: str,
-        path: str,
-    ) -> None:
-        if self.app_is_duplicate(
-            name,
-            path,
-        ):
-            messagebox.showinfo(
-                APP_NAME,
-                "That application is already protected.",
-                parent=self.root,
-            )
-            return
-
-        apps = self.get_protected_apps()
-
-        apps.append(
-            {
-                "name": name,
-                "path": path,
-            }
-        )
-
-        self.config["protected_apps"] = apps
-
-        save_config(self.config)
-        self.refresh_protected_apps()
-
-        self.status_var.set(
-            f"Added protected application: {name}"
-        )
-
-    def select_running_application(self) -> None:
-        selector = tk.Toplevel(self.root)
-
-        selector.title(
-            "Select Running Application"
-        )
-
-        selector.geometry("1000x570")
-        selector.minsize(780, 430)
-        selector.transient(self.root)
-
-        outer = ttk.Frame(
-            selector,
-            padding=12,
-        )
-
-        outer.pack(
-            fill="both",
-            expand=True,
-        )
-
-        outer.rowconfigure(
-            2,
-            weight=1,
-        )
-
-        outer.columnconfigure(
-            0,
-            weight=1,
-        )
-
-        ttk.Label(
-            outer,
-            text="Select Running Application",
-            font=("Segoe UI", 16, "bold"),
-        ).grid(
-            row=0,
-            column=0,
-            sticky="w",
-        )
-
-        ttk.Label(
-            outer,
-            text=(
-                "Choose the visible application you want "
-                "to add to Window Guard."
-            ),
-        ).grid(
-            row=1,
-            column=0,
-            sticky="w",
-            pady=(4, 10),
-        )
-
-        columns = (
-            "title",
-            "exe",
-            "pid",
-            "path",
-        )
-
-        tree = ttk.Treeview(
-            outer,
-            columns=columns,
-            show="headings",
-            selectmode="browse",
-        )
-
-        tree.grid(
-            row=2,
-            column=0,
-            sticky="nsew",
-        )
-
-        tree.heading(
-            "title",
-            text="Window Title",
-        )
-
-        tree.heading(
-            "exe",
-            text="Executable",
-        )
-
-        tree.heading(
-            "pid",
-            text="PID",
-        )
-
-        tree.heading(
-            "path",
-            text="Executable Path",
-        )
-
-        tree.column(
-            "title",
-            width=320,
-            minwidth=180,
-        )
-
-        tree.column(
-            "exe",
-            width=140,
-            minwidth=100,
-        )
-
-        tree.column(
-            "pid",
-            width=80,
-            minwidth=60,
-            anchor="center",
-        )
-
-        tree.column(
-            "path",
-            width=420,
-            minwidth=220,
-        )
-
-        scrollbar = ttk.Scrollbar(
-            outer,
-            orient="vertical",
-            command=tree.yview,
-        )
-
-        scrollbar.grid(
-            row=2,
-            column=1,
-            sticky="ns",
-        )
-
-        tree.configure(
-            yscrollcommand=scrollbar.set
-        )
-
-        bottom = ttk.Frame(outer)
-
-        bottom.grid(
-            row=3,
-            column=0,
-            sticky="ew",
-            pady=(10, 0),
-        )
-
-        result_var = tk.StringVar()
-
-        ttk.Label(
-            bottom,
-            textvariable=result_var,
-        ).pack(
-            side="left",
-        )
-
-        app_items: dict[str, dict] = {}
-
-        def refresh() -> None:
-            for child in tree.get_children():
-                tree.delete(child)
-
-            app_items.clear()
-
-            applications = (
-                enumerate_selectable_applications()
-            )
-
-            for index, item in enumerate(
-                applications
-            ):
-                iid = f"running_{index}"
-                app_items[iid] = item
-
-                tree.insert(
-                    "",
-                    "end",
-                    iid=iid,
-                    values=(
-                        item["title"],
-                        item["name"],
-                        item["pid"],
-                        item["path"]
-                        or "(path unavailable)",
-                    ),
-                )
-
-            result_var.set(
-                f"{len(applications)} visible window(s) found."
-            )
-
-        def choose() -> None:
-            selection = tree.selection()
-
-            if not selection:
-                messagebox.showwarning(
-                    APP_NAME,
-                    "Select an application first.",
-                    parent=selector,
-                )
-                return
-
-            item = app_items.get(
-                selection[0]
-            )
-
-            if not item:
-                return
-
-            path = str(
-                item.get("path", "")
-            )
-
-            if not path:
-                messagebox.showerror(
-                    APP_NAME,
-                    (
-                        "Windows did not provide the executable "
-                        "path. Try running Window Guard as "
-                        "administrator or use Browse EXE."
-                    ),
-                    parent=selector,
-                )
-                return
-
-            try:
-                if (
-                    normalize_path(path)
-                    == current_program_path()
-                ):
-                    messagebox.showerror(
-                        APP_NAME,
-                        "Window Guard cannot protect itself.",
-                        parent=selector,
-                    )
-                    return
-
-            except (OSError, ValueError):
-                pass
-
-            self.add_protected_app(
-                str(item["name"]),
-                path,
-            )
-
-            selector.destroy()
-
-        ttk.Button(
-            bottom,
-            text="Refresh",
-            command=refresh,
-        ).pack(
-            side="right",
-            padx=(8, 0),
-        )
-
-        ttk.Button(
-            bottom,
-            text="Add Selected App",
-            command=choose,
-        ).pack(
-            side="right",
-        )
-
-        tree.bind(
-            "<Double-1>",
-            lambda _event: choose(),
-        )
-
-        tree.bind(
-            "<Return>",
-            lambda _event: choose(),
-        )
-
-        refresh()
-
-    def browse_application(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Select an application",
-            filetypes=[
-                (
-                    "Windows applications",
-                    "*.exe",
-                ),
-                (
-                    "All files",
-                    "*.*",
-                ),
-            ],
-        )
-
-        if not path:
-            return
-
-        selected = Path(path)
-
-        if selected.suffix.lower() != ".exe":
-            messagebox.showerror(
-                APP_NAME,
-                "Please select a Windows .exe file.",
-                parent=self.root,
-            )
-            return
-
-        try:
-            if (
-                normalize_path(selected)
-                == current_program_path()
-            ):
-                messagebox.showerror(
-                    APP_NAME,
-                    "Window Guard cannot protect itself.",
-                    parent=self.root,
-                )
-                return
-
-        except (OSError, ValueError):
-            pass
-
-        self.add_protected_app(
-            selected.name,
-            str(selected),
-        )
-
-    def remove_selected_app(self) -> None:
-        selection = self.apps_tree.selection()
-
-        if not selection:
-            messagebox.showwarning(
-                APP_NAME,
-                "Select a protected application first.",
-                parent=self.root,
-            )
-            return
-
-        item_id = selection[0]
-
-        try:
-            index = int(
-                item_id.split("_", 1)[1]
-            )
-        except (IndexError, ValueError):
-            return
-
-        apps = self.get_protected_apps()
-
-        if not (
-            0 <= index < len(apps)
-        ):
-            return
-
-        removed = apps.pop(index)
-
-        self.config["protected_apps"] = apps
-
-        save_config(self.config)
-        self.refresh_protected_apps()
-
-        self.status_var.set(
-            f"Removed: {removed['name']}"
-        )
-
-    def set_or_change_pin(self) -> None:
-        existing_record = self.config.get(
-            "pin"
-        )
-
-        if existing_record:
-            current = simpledialog.askstring(
-                APP_NAME,
-                "Enter the current PIN:",
-                show="*",
-                parent=self.root,
-            )
-
-            if current is None:
-                return
-
-            if not verify_pin(
-                current,
-                existing_record,
-            ):
-                messagebox.showerror(
-                    APP_NAME,
-                    "The current PIN is incorrect.",
-                    parent=self.root,
-                )
-                return
-
-        new_pin = simpledialog.askstring(
-            APP_NAME,
-            "Enter a new PIN (4 to 12 digits):",
-            show="*",
-            parent=self.root,
-        )
-
-        if new_pin is None:
-            return
-
-        error = validate_new_pin(new_pin)
-
-        if error:
-            messagebox.showerror(
-                APP_NAME,
-                error,
-                parent=self.root,
-            )
-            return
-
-        confirmation = simpledialog.askstring(
-            APP_NAME,
-            "Enter the new PIN again:",
-            show="*",
-            parent=self.root,
-        )
-
-        if confirmation is None:
-            return
-
-        if new_pin != confirmation:
-            messagebox.showerror(
-                APP_NAME,
-                "The PINs do not match.",
-                parent=self.root,
-            )
-            return
-
-        self.config["pin"] = (
-            create_pin_record(new_pin)
-        )
-
-        save_config(self.config)
-
-        self.status_var.set(
-            "PIN saved."
-        )
-
-        messagebox.showinfo(
-            APP_NAME,
-            "The PIN has been saved.",
-            parent=self.root,
-        )
-
-    def lock_now(self) -> None:
-        if self.locked:
-            self.show_lock_window()
-            return
-
-        apps = self.get_protected_apps()
-
-        if not apps:
-            messagebox.showerror(
-                APP_NAME,
-                (
-                    "Add at least one protected "
-                    "application first."
-                ),
-                parent=self.root,
-            )
-            return
-
-        if not self.config.get("pin"):
-            messagebox.showerror(
-                APP_NAME,
-                "Set a PIN before using Lock Now.",
-                parent=self.root,
-            )
-            return
-
-        processes = get_running_processes()
-        found_handles: set[int] = set()
-
-        for app in apps:
-            for hwnd in enumerate_windows_for_app(
-                app,
-                visible_only=True,
-                processes=processes,
-            ):
-                found_handles.add(hwnd)
-
-        for hwnd in found_handles:
-            if hide_window(hwnd):
-                self.hidden_handles.add(hwnd)
-
-        self.locked = True
-
-        self.config["locked"] = True
-        self.config["hidden_handles"] = sorted(
-            self.hidden_handles
-        )
-
-        save_config(self.config)
-
-        self.failed_attempts = 0
-        self.cooldown_until = 0.0
-
-        self.lock_message_var.set(
-            "Enter your PIN to unlock."
-        )
-
-        self.root.withdraw()
-        self.show_lock_window()
-        self.monitor_locked_apps()
-
-        if found_handles:
-            self.status_var.set(
-                (
-                    f"Locked. Hidden windows: "
-                    f"{len(found_handles)}"
-                )
-            )
-        else:
-            self.status_var.set(
-                (
-                    "Lock mode is active. No protected "
-                    "windows are currently visible; "
-                    "new ones will be hidden automatically."
-                )
-            )
-
-    def show_lock_window(self) -> None:
-        if (
-            self.lock_window
-            and self.lock_window.winfo_exists()
-        ):
-            self.lock_window.deiconify()
-            self.lock_window.lift()
-
-            if self.pin_entry:
-                self.pin_entry.focus_force()
-
-            return
-
-        window = tk.Toplevel(self.root)
-
-        self.lock_window = window
-
-        window.title(APP_NAME)
-        window.geometry("450x270")
-        window.resizable(False, False)
-        window.attributes("-topmost", True)
-
-        window.protocol(
-            "WM_DELETE_WINDOW",
-            self.refuse_lock_window_close,
-        )
-
-        frame = ttk.Frame(
-            window,
-            padding=24,
-        )
-
-        frame.pack(
-            fill="both",
-            expand=True,
-        )
-
-        ttk.Label(
-            frame,
-            text=APP_NAME,
-            font=("Segoe UI", 18, "bold"),
-        ).pack()
-
-        ttk.Label(
-            frame,
-            text="Protected applications are locked.",
-        ).pack(
-            pady=(8, 16),
-        )
-
-        ttk.Label(
-            frame,
-            textvariable=self.lock_message_var,
-        ).pack()
-
-        self.pin_entry = ttk.Entry(
-            frame,
-            show="*",
-            justify="center",
-            font=("Segoe UI", 14),
-        )
-
-        self.pin_entry.pack(
-            fill="x",
-            pady=12,
-        )
-
-        self.pin_entry.bind(
-            "<Return>",
-            lambda _event: self.try_unlock(),
-        )
-
-        self.unlock_button = ttk.Button(
-            frame,
-            text="Unlock",
-            command=self.try_unlock,
-        )
-
-        self.unlock_button.pack()
-
-        window.update_idletasks()
-
-        x = (
-            window.winfo_screenwidth()
-            - window.winfo_width()
-        ) // 2
-
-        y = (
-            window.winfo_screenheight()
-            - window.winfo_height()
-        ) // 2
-
-        window.geometry(
-            f"+{x}+{y}"
-        )
-
-        self.pin_entry.focus_force()
-
-    def refuse_lock_window_close(self) -> None:
-        if self.lock_window:
-            self.lock_window.bell()
-            self.lock_window.lift()
-
-        self.lock_message_var.set(
-            "Enter the PIN to unlock Window Guard."
-        )
-
-    def monitor_locked_apps(self) -> None:
-        if not self.locked:
-            return
-
-        apps = self.get_protected_apps()
-        processes = get_running_processes()
-
-        changed = False
-
-        for app in apps:
-            handles = enumerate_windows_for_app(
-                app,
-                visible_only=True,
-                processes=processes,
-            )
-
-            for hwnd in handles:
-                if hide_window(hwnd):
-                    if hwnd not in self.hidden_handles:
-                        self.hidden_handles.add(hwnd)
-                        changed = True
-
-        invalid = {
-            hwnd
-            for hwnd in self.hidden_handles
-            if not user32.IsWindow(hwnd)
-        }
-
-        if invalid:
-            self.hidden_handles.difference_update(
-                invalid
-            )
-            changed = True
-
-        if changed:
-            self.config["hidden_handles"] = sorted(
-                self.hidden_handles
-            )
-
-            save_config(self.config)
-
-        if (
-            self.lock_window
-            and self.lock_window.winfo_exists()
-        ):
-            self.lock_window.attributes(
-                "-topmost",
-                True,
-            )
-
-        self.root.after(
-            self.MONITOR_INTERVAL_MS,
-            self.monitor_locked_apps,
-        )
-
-    def try_unlock(self) -> None:
-        if not self.locked:
-            return
-
-        if self.pin_entry is None:
-            return
-
-        remaining = int(
-            self.cooldown_until - time.time()
-        )
-
-        if remaining > 0:
-            self.lock_message_var.set(
-                (
-                    "Too many attempts. Try again in "
-                    f"{remaining + 1} seconds."
-                )
-            )
-            return
-
-        entered = self.pin_entry.get()
-
-        self.pin_entry.delete(
-            0,
-            "end",
-        )
-
-        if verify_pin(
-            entered,
-            self.config.get("pin"),
-        ):
-            self.unlock_all()
-            return
-
-        self.failed_attempts += 1
-
-        attempts_left = (
-            self.FAILED_ATTEMPT_LIMIT
-            - self.failed_attempts
-        )
-
-        if attempts_left > 0:
-            self.lock_message_var.set(
-                (
-                    f"Incorrect PIN. "
-                    f"{attempts_left} attempt(s) remaining."
-                )
-            )
-
-            self.pin_entry.focus_force()
-            return
-
-        self.failed_attempts = 0
-
-        self.cooldown_until = (
-            time.time()
-            + self.COOLDOWN_SECONDS
-        )
-
-        self.start_cooldown()
-
-    def start_cooldown(self) -> None:
-        if not self.locked:
-            return
-
-        if self.pin_entry is None:
-            return
-
-        remaining = int(
-            self.cooldown_until - time.time()
-        )
-
-        if remaining <= 0:
-            self.cooldown_until = 0.0
-
-            self.lock_message_var.set(
-                "You can try again."
-            )
-
-            self.pin_entry.configure(
-                state="normal"
-            )
-
-            if self.unlock_button:
-                self.unlock_button.configure(
-                    state="normal"
-                )
-
-            self.pin_entry.focus_force()
-            return
-
-        self.pin_entry.configure(
-            state="disabled"
-        )
-
-        if self.unlock_button:
-            self.unlock_button.configure(
-                state="disabled"
-            )
-
-        self.lock_message_var.set(
-            (
-                "Too many attempts. Try again in "
-                f"{remaining + 1} seconds."
-            )
-        )
-
-        self.root.after(
-            250,
-            self.start_cooldown,
-        )
-
-    def unlock_all(self) -> None:
-        first_restored = None
-
-        for hwnd in list(
-            self.hidden_handles
-        ):
-            if show_window(hwnd):
-                if first_restored is None:
-                    first_restored = hwnd
-
-        self.hidden_handles.clear()
-        self.locked = False
-
-        self.config["locked"] = False
-        self.config["hidden_handles"] = []
-
-        save_config(self.config)
-
-        if (
-            self.lock_window
-            and self.lock_window.winfo_exists()
-        ):
-            self.lock_window.attributes(
-                "-topmost",
-                False,
-            )
-
-            self.lock_window.destroy()
-
-        self.lock_window = None
-        self.pin_entry = None
-        self.unlock_button = None
-
-        self.root.deiconify()
-        self.root.lift()
-
-        self.status_var.set(
-            "Protected applications unlocked."
-        )
-
-        if (
-            first_restored
-            and user32.IsWindow(first_restored)
-        ):
-            user32.SetForegroundWindow(
-                first_restored
-            )
-
-    def resume_locked_state(self) -> None:
-        if not self.locked:
-            return
-
-        if not self.config.get("pin"):
-            self.locked = False
-            self.config["locked"] = False
-            self.config["hidden_handles"] = []
-
-            save_config(self.config)
-
-            self.status_var.set(
-                (
-                    "Incomplete lock state cleared "
-                    "because no PIN exists."
-                )
-            )
-
-            return
-
-        apps = self.get_protected_apps()
-        processes = get_running_processes()
-
-        allowed_pids: set[int] = set()
-
-        for app in apps:
-            allowed_pids.update(
-                get_target_pids_for_app(
-                    app,
-                    processes,
-                )
-            )
-
-        valid_handles: set[int] = set()
-
-        for hwnd in self.hidden_handles:
-            if not user32.IsWindow(hwnd):
-                continue
-
-            if get_window_pid(hwnd) in allowed_pids:
-                valid_handles.add(hwnd)
-
-        self.hidden_handles = valid_handles
-
-        self.root.withdraw()
-        self.show_lock_window()
-        self.monitor_locked_apps()
-
-    def toggle_startup(self) -> None:
-        enabled = bool(
-            self.startup_var.get()
-        )
-
-        try:
-            set_start_with_windows(
-                enabled
-            )
-
-        except OSError as exc:
-            self.startup_var.set(
-                startup_entry_exists()
-            )
-
-            messagebox.showerror(
-                APP_NAME,
-                (
-                    "Could not change the Windows "
-                    f"startup setting.\n\n{exc}"
-                ),
-                parent=self.root,
-            )
-
-            return
-
-        self.config["start_with_windows"] = (
-            enabled
-        )
-
-        save_config(self.config)
-
-        self.status_var.set(
-            (
-                "Start with Windows enabled."
-                if enabled
-                else "Start with Windows disabled."
-            )
-        )
-
-    def build_diagnostic_report(self) -> str:
-        apps = self.get_protected_apps()
-        processes = get_running_processes()
-
-        lines = [
-            f"{APP_NAME} {APP_VERSION} diagnostic report",
-            "",
-            f"Locked: {self.locked}",
-            f"Protected apps: {len(apps)}",
-            "",
-        ]
-
-        all_target_pids: set[int] = set()
-
-        for index, app in enumerate(
-            apps,
-            start=1,
-        ):
-            pids = get_target_pids_for_app(
-                app,
-                processes,
-            )
-
-            all_target_pids.update(pids)
-
-            lines.extend(
-                [
-                    f"[{index}] {app['name']}",
-                    f"Path: {app['path']}",
-                    f"Matched PIDs: {sorted(pids) or '(none)'}",
-                    "",
-                ]
-            )
-
-        lines.extend(
-            [
-                "VISIBLE WINDOWS",
-                "-" * 70,
-            ]
-        )
-
-        @WNDENUMPROC
-        def callback(
-            hwnd: int,
-            _lparam: int,
-        ) -> bool:
-            if not user32.IsWindow(hwnd):
-                return True
-
-            if not user32.IsWindowVisible(hwnd):
-                return True
-
-            title = get_window_title(
-                hwnd
-            ).strip()
-
-            if not title:
-                return True
-
-            pid = get_window_pid(hwnd)
-
-            info = processes.get(
-                pid,
-                {},
-            )
-
-            name = info.get(
-                "name",
-                "?",
-            )
-
-            tag = (
-                " <== PROTECTED"
-                if pid in all_target_pids
-                else ""
-            )
-
-            lines.append(
-                (
-                    f"PID={pid} | EXE={name} | "
-                    f"HWND={int(hwnd)} | "
-                    f"TITLE={title}{tag}"
-                )
-            )
-
-            return True
-
-        user32.EnumWindows(
-            callback,
-            0,
-        )
-
-        return "\n".join(lines)
-
-    def show_diagnostics(self) -> None:
-        report = self.build_diagnostic_report()
-
-        dialog = tk.Toplevel(
-            self.root
-        )
-
-        dialog.title(
-            f"{APP_NAME} Diagnostics"
-        )
-
-        dialog.geometry("940x560")
-        dialog.minsize(720, 420)
-
-        frame = ttk.Frame(
-            dialog,
-            padding=10,
-        )
-
-        frame.pack(
-            fill="both",
-            expand=True,
-        )
-
-        text = tk.Text(
-            frame,
-            wrap="none",
-            font=("Consolas", 10),
-        )
-
-        text.pack(
-            fill="both",
-            expand=True,
-        )
-
-        text.insert(
-            "1.0",
-            report,
-        )
-
-        text.configure(
-            state="disabled"
-        )
-
-        def copy_report() -> None:
-            dialog.clipboard_clear()
-            dialog.clipboard_append(
-                report
-            )
-
-            self.status_var.set(
-                "Diagnostic report copied."
-            )
-
-        ttk.Button(
-            dialog,
-            text="Copy Report",
-            command=copy_report,
-        ).pack(
-            pady=(0, 10),
-        )
-
-    def start_tray_icon(self) -> None:
-        if pystray is None:
-            self.status_var.set(
-                (
-                    "Tray support is unavailable. Install "
-                    "'pystray' and 'pillow'."
-                )
-            )
-            return
-
-        image = create_tray_image()
-
-        menu = pystray.Menu(
-            pystray.MenuItem(
-                "Show Window Guard",
-                self.tray_show,
-                default=True,
-            ),
-            pystray.MenuItem(
-                "Lock Now",
-                self.tray_lock,
-            ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "Exit",
-                self.tray_exit,
-            ),
-        )
-
-        self.tray_icon = pystray.Icon(
-            "WindowGuard",
-            image,
-            APP_NAME,
-            menu,
-        )
-
-        thread = threading.Thread(
-            target=self.tray_icon.run,
-            daemon=True,
-        )
-
-        thread.start()
-
-    def tray_show(
-        self,
-        _icon=None,
-        _item=None,
-    ) -> None:
-        self.root.after(
-            0,
-            self.show_from_tray,
-        )
-
-    def tray_lock(
-        self,
-        _icon=None,
-        _item=None,
-    ) -> None:
-        self.root.after(
-            0,
-            self.lock_now,
-        )
-
-    def tray_exit(
-        self,
-        _icon=None,
-        _item=None,
-    ) -> None:
-        self.root.after(
-            0,
-            self.exit_application,
-        )
-
-    def show_from_tray(self) -> None:
-        if self.locked:
-            self.show_lock_window()
-            return
-
-        self.root.deiconify()
-        self.root.lift()
-
-    def hide_to_tray(self) -> None:
-        if pystray is None:
-            if self.locked:
-                self.show_lock_window()
-            else:
-                self.root.destroy()
-            return
-
-        self.root.withdraw()
-
-    def exit_application(self) -> None:
-        if self.locked:
-            self.show_lock_window()
-            self.lock_message_var.set(
-                "Unlock Window Guard before exiting."
-            )
-            return
-
-        if self.tray_icon is not None:
-            try:
-                self.tray_icon.stop()
-            except Exception:
-                pass
-
-        self.root.destroy()
-
-
-def main() -> None:
-    missing = []
-
-    if pystray is None:
-        missing.append("pystray")
-
-    if Image is None:
-        missing.append("pillow")
-
-    if missing:
-        root = tk.Tk()
-        root.withdraw()
-
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_QUERY_VALUE) as key:
+            winreg.QueryValueEx(key, RUN_VALUE); return True
+    except OSError: return False
+
+def tray_image():
+    if Image is None: return None
+    im = Image.new("RGB", (64,64), (32,38,46)); d = ImageDraw.Draw(im)
+    d.rounded_rectangle((14,26,50,55), radius=6, fill=(225,230,236)); d.arc((20,8,44,38), 180, 360, fill=(225,230,236), width=6)
+    return im
+
+def program_dir() -> Path:
+    """Folder containing WindowGuard.exe or window_guard.py."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+def open_local_document(filename: str, parent=None) -> None:
+    path = program_dir() / filename
+    if not path.exists():
         messagebox.showerror(
             APP_NAME,
-            (
-                "Window Guard v0.3.0 needs these Python "
-                "packages:\n\n"
-                + "\n".join(missing)
-                + "\n\nRun:\n"
-                "python -m pip install pystray pillow"
-            ),
+            f"Help file not found:\n\n{path}\n\nKeep the help files in the same folder as WindowGuard.exe.",
+            parent=parent,
         )
-
-        root.destroy()
         return
-
-    root = tk.Tk()
-
     try:
-        style = ttk.Style(root)
+        if path.suffix.lower() == ".html":
+            webbrowser.open(path.as_uri())
+        else:
+            os.startfile(str(path))
+    except Exception as exc:
+        messagebox.showerror(APP_NAME, f"Could not open the help file.\n\n{exc}", parent=parent)
 
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
+def open_web_url(url: str, parent=None, label: str = "web page") -> None:
+    try:
+        opened = webbrowser.open_new_tab(url)
+        if opened is False:
+            raise RuntimeError("The default browser did not accept the request.")
+    except Exception as exc:
+        messagebox.showerror(APP_NAME, f"Could not open the {label}.\n\n{exc}", parent=parent)
 
-    except tk.TclError:
-        pass
+class WindowGuard:
+    def __init__(self, root: tk.Tk, start_hidden=False):
+        self.root = root; self.cfg = load_config()
+        self.unlocked: set[str] = set()                 # runtime only
+        self.last_pids: dict[str, set[int]] = {}
+        self.hidden: dict[str, set[int]] = {}
+        self.queue: list[str] = []
+        self.current: str | None = None
+        self.lock_win = self.pin_entry = self.unlock_btn = None
+        self.failed = 0; self.cooldown_until = 0.0; self.tray = None
+        self.status = tk.StringVar(value="Protection monitor is active.")
+        self.lock_text = tk.StringVar(value="Enter your PIN.")
+        self.startup_var = tk.BooleanVar(value=startup_exists())
+        self.build_ui(); self.refresh(); self.root.protocol("WM_DELETE_WINDOW", self.hide_to_tray); self.start_tray()
+        if start_hidden: self.root.after(100, self.root.withdraw)
+        self.root.after(250, self.monitor)
 
-    start_hidden = (
-        "--startup" in sys.argv
-    )
+    def apps(self): return self.cfg.get("protected_apps", [])
+    def by_id(self, aid): return next((a for a in self.apps() if a.get("id") == aid), None)
 
-    WindowGuardApp(
-        root,
-        start_hidden=start_hidden,
-    )
+    def build_ui(self):
+        self.root.title(f"{APP_NAME} {APP_VERSION}"); self.root.geometry("900x560"); self.root.minsize(800,500)
+        menubar = tk.Menu(self.root)
 
-    root.mainloop()
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Lock All Now", command=self.lock_all)
+        file_menu.add_command(label="Hide to Tray", command=self.hide_to_tray)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.exit_app)
+        menubar.add_cascade(label="File", menu=file_menu)
 
+        apps_menu = tk.Menu(menubar, tearoff=0)
+        apps_menu.add_command(label="Add Running App...", command=self.add_running)
+        apps_menu.add_command(label="Browse EXE...", command=self.browse)
+        apps_menu.add_separator()
+        apps_menu.add_command(label="Lock Selected App", command=self.lock_selected)
+        apps_menu.add_command(label="Remove Selected", command=self.remove)
+        menubar.add_cascade(label="Applications", menu=apps_menu)
 
-if __name__ == "__main__":
-    main()
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        tools_menu.add_command(label="Set / Change PIN", command=self.set_pin)
+        tools_menu.add_command(label="Diagnostics", command=self.diagnostics)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Open Configuration Folder", command=self.open_config_folder)
+        tools_menu.add_command(label="Open Application Folder", command=self.open_program_folder)
+        tools_menu.add_separator()
+        tools_menu.add_checkbutton(
+            label="Start Window Guard with Windows",
+            variable=self.startup_var,
+            command=self.toggle_startup,
+        )
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+
+        github_menu = tk.Menu(menubar, tearoff=0)
+        github_menu.add_command(label="Open Repository", command=self.open_github_repository)
+        github_menu.add_command(label="Latest Release", command=self.open_github_latest_release)
+        github_menu.add_command(label="All Releases", command=self.open_github_releases)
+        github_menu.add_separator()
+        github_menu.add_command(label="Report Bug / Request Feature", command=self.open_github_new_issue)
+        github_menu.add_command(label="View Issues", command=self.open_github_issues)
+        github_menu.add_separator()
+        github_menu.add_command(label="Copy Repository URL", command=self.copy_github_url)
+        menubar.add_cascade(label="GitHub", menu=github_menu)
+
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="Help Contents (HTML)", command=self.open_help_html)
+        help_menu.add_command(label="User Manual (PDF)", command=self.open_help_pdf)
+        help_menu.add_separator()
+        help_menu.add_command(label="About Window Guard", command=self.about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        self.root.config(menu=menubar)
+        main = ttk.Frame(self.root, padding=16); main.pack(fill="both", expand=True); main.columnconfigure(0,weight=1); main.rowconfigure(3,weight=1)
+        ttk.Label(main,text=APP_NAME,font=("Segoe UI",20,"bold")).grid(row=0,column=0,sticky="w")
+        ttk.Label(main,text="Protected apps stay registered. Unlock applies only until that app fully closes.",wraplength=840).grid(row=1,column=0,sticky="w",pady=(2,14))
+        bar=ttk.Frame(main); bar.grid(row=2,column=0,sticky="ew",pady=(0,8))
+        ttk.Button(bar,text="Add Running App",command=self.add_running).pack(side="left")
+        ttk.Button(bar,text="Browse EXE...",command=self.browse).pack(side="left",padx=(8,0))
+        ttk.Button(bar,text="Remove Selected",command=self.remove).pack(side="left",padx=(8,0))
+        ttk.Button(bar,text="Diagnostics",command=self.diagnostics).pack(side="right")
+        box=ttk.LabelFrame(main,text="Protected applications",padding=8); box.grid(row=3,column=0,sticky="nsew"); box.columnconfigure(0,weight=1); box.rowconfigure(0,weight=1)
+        self.tree=ttk.Treeview(box,columns=("name","state","running","path"),show="headings",selectmode="browse"); self.tree.grid(row=0,column=0,sticky="nsew")
+        for col,title,width in (("name","Executable",150),("state","Protection",110),("running","Running",90),("path","Executable Path",500)):
+            self.tree.heading(col,text=title); self.tree.column(col,width=width,anchor="center" if col in ("state","running") else "w")
+        sc=ttk.Scrollbar(box,orient="vertical",command=self.tree.yview); sc.grid(row=0,column=1,sticky="ns"); self.tree.configure(yscrollcommand=sc.set)
+        acts=ttk.Frame(main); acts.grid(row=4,column=0,sticky="ew",pady=(14,8))
+        ttk.Button(acts,text="Set / Change PIN",command=self.set_pin).pack(side="left")
+        ttk.Button(acts,text="Lock Selected App",command=self.lock_selected).pack(side="right")
+        ttk.Button(acts,text="Lock All Now",command=self.lock_all).pack(side="right",padx=(0,8))
+        ttk.Checkbutton(main,text="Start Window Guard with Windows",variable=self.startup_var,command=self.toggle_startup).grid(row=5,column=0,sticky="w",pady=(2,8))
+        ttk.Separator(main).grid(row=6,column=0,sticky="ew",pady=(4,10)); ttk.Label(main,textvariable=self.status,wraplength=840).grid(row=7,column=0,sticky="w")
+        ttk.Label(main,text="When an Unlocked app fully closes, it automatically returns to Locked for its next launch.",wraplength=840).grid(row=8,column=0,sticky="w",pady=(8,0))
+
+    def refresh(self):
+        selected=self.tree.selection(); idx=None
+        if selected:
+            try: idx=int(selected[0].split("_",1)[1])
+            except: pass
+        for x in self.tree.get_children(): self.tree.delete(x)
+        procs=processes()
+        for i,a in enumerate(self.apps()):
+            aid=str(a["id"]); running="Yes" if target_pids(a,procs) else "No"; state="Unlocked" if aid in self.unlocked else "Locked"
+            self.tree.insert("","end",iid=f"app_{i}",values=(a["name"],state,running,a["path"]))
+        if idx is not None and self.tree.exists(f"app_{idx}"): self.tree.selection_set(f"app_{idx}")
+
+    def selected_app(self):
+        s=self.tree.selection()
+        if not s: return None
+        try: i=int(s[0].split("_",1)[1]); return self.apps()[i]
+        except: return None
+
+    def duplicate(self,name,path):
+        for a in self.apps():
+            try:
+                if path and a.get("path") and norm(path)==norm(a["path"]): return True
+            except: pass
+        return False
+
+    def add_app(self,name,path):
+        if self.duplicate(name,path): messagebox.showinfo(APP_NAME,"That application is already protected.",parent=self.root); return
+        self.apps().append({"id":uuid.uuid4().hex[:16],"name":name,"path":path,"relock_on_close":True}); save_config(self.cfg); self.status.set(f"Added {name}. It is Locked by default."); self.refresh()
+
+    def add_running(self):
+        win=tk.Toplevel(self.root); win.title("Select Running Application"); win.geometry("1000x570"); win.transient(self.root)
+        f=ttk.Frame(win,padding=12); f.pack(fill="both",expand=True); f.rowconfigure(2,weight=1); f.columnconfigure(0,weight=1)
+        ttk.Label(f,text="Select Running Application",font=("Segoe UI",16,"bold")).grid(row=0,column=0,sticky="w")
+        ttk.Label(f,text="Choose the real visible application executable. Window Guard will remember it after it closes.").grid(row=1,column=0,sticky="w",pady=(4,10))
+        tree=ttk.Treeview(f,columns=("title","exe","pid","path"),show="headings"); tree.grid(row=2,column=0,sticky="nsew")
+        for c,t,w in (("title","Window Title",320),("exe","Executable",140),("pid","PID",80),("path","Executable Path",420)):
+            tree.heading(c,text=t); tree.column(c,width=w)
+        items={}; status=tk.StringVar(); bottom=ttk.Frame(f); bottom.grid(row=3,column=0,sticky="ew",pady=(10,0)); ttk.Label(bottom,textvariable=status).pack(side="left")
+        def refill():
+            for x in tree.get_children(): tree.delete(x)
+            items.clear(); data=visible_apps()
+            for i,a in enumerate(data):
+                iid=f"run_{i}"; items[iid]=a; tree.insert("","end",iid=iid,values=(a["title"],a["name"],a["pid"],a["path"] or "(path unavailable)"))
+            status.set(f"{len(data)} visible window(s) found.")
+        def choose():
+            s=tree.selection()
+            if not s: return messagebox.showwarning(APP_NAME,"Select an application first.",parent=win)
+            a=items.get(s[0]); path=a.get("path","") if a else ""
+            if not a or not path: return messagebox.showerror(APP_NAME,"Executable path unavailable. Try Browse EXE or run Window Guard as administrator.",parent=win)
+            try:
+                if norm(path)==own_path(): return messagebox.showerror(APP_NAME,"Window Guard cannot protect itself.",parent=win)
+            except: pass
+            self.add_app(a["name"],path); win.destroy()
+        ttk.Button(bottom,text="Refresh",command=refill).pack(side="right",padx=(8,0)); ttk.Button(bottom,text="Add Selected App",command=choose).pack(side="right")
+        tree.bind("<Double-1>",lambda e:choose()); refill()
+
+    def browse(self):
+        p=filedialog.askopenfilename(title="Select an application",filetypes=[("Windows applications","*.exe"),("All files","*.*")])
+        if not p: return
+        try:
+            if norm(p)==own_path(): return messagebox.showerror(APP_NAME,"Window Guard cannot protect itself.",parent=self.root)
+        except: pass
+        self.add_app(Path(p).name,p)
+
+    def remove(self):
+        a=self.selected_app()
+        if not a: return messagebox.showwarning(APP_NAME,"Select a protected application first.",parent=self.root)
+        aid=str(a["id"]); self.unlocked.discard(aid)
+        for hwnd in self.hidden.pop(aid,set()): show(hwnd)
+        self.cfg["protected_apps"]=[x for x in self.apps() if x.get("id")!=aid]; save_config(self.cfg); self.status.set(f"Removed protection from {a['name']}."); self.refresh()
+
+    def set_pin(self):
+        old=self.cfg.get("pin")
+        if old:
+            cur=simpledialog.askstring(APP_NAME,"Enter the current PIN:",show="*",parent=self.root)
+            if cur is None: return
+            if not check_pin(cur,old): return messagebox.showerror(APP_NAME,"The current PIN is incorrect.",parent=self.root)
+        pin=simpledialog.askstring(APP_NAME,"Enter a new PIN (4 to 12 digits):",show="*",parent=self.root)
+        if pin is None: return
+        if not pin.isdigit() or not 4<=len(pin)<=12: return messagebox.showerror(APP_NAME,"PIN must contain 4 to 12 digits.",parent=self.root)
+        again=simpledialog.askstring(APP_NAME,"Enter the new PIN again:",show="*",parent=self.root)
+        if again is None: return
+        if pin!=again: return messagebox.showerror(APP_NAME,"The PINs do not match.",parent=self.root)
+        self.cfg["pin"]=make_pin(pin); save_config(self.cfg); self.status.set("PIN saved."); messagebox.showinfo(APP_NAME,"The PIN has been saved.",parent=self.root)
+
+    def lock_one(self,a,prompt=True):
+        if not self.cfg.get("pin"): return messagebox.showerror(APP_NAME,"Set a PIN first.",parent=self.root)
+        aid=str(a["id"]); self.unlocked.discard(aid); h=self.hidden.setdefault(aid,set()); procs=processes()
+        for hwnd in app_windows(a,True,procs):
+            if hide(hwnd): h.add(hwnd)
+        if h and prompt: self.enqueue(aid)
+        self.status.set(f"{a['name']} is Locked."); self.refresh()
+
+    def lock_selected(self):
+        a=self.selected_app()
+        if not a: return messagebox.showwarning(APP_NAME,"Select a protected application first.",parent=self.root)
+        self.lock_one(a)
+
+    def lock_all(self):
+        if not self.cfg.get("pin"): return messagebox.showerror(APP_NAME,"Set a PIN first.",parent=self.root)
+        self.unlocked.clear(); procs=processes()
+        for a in self.apps():
+            aid=str(a["id"]); h=self.hidden.setdefault(aid,set())
+            for hwnd in app_windows(a,True,procs):
+                if hide(hwnd): h.add(hwnd)
+            if h: self.enqueue(aid,False)
+        self.show_next(); self.status.set("All protected applications are Locked."); self.refresh()
+
+    def enqueue(self,aid,show_now=True):
+        if aid in self.unlocked or aid==self.current: return
+        if aid not in self.queue: self.queue.append(aid)
+        if show_now: self.show_next()
+
+    def show_next(self):
+        if self.current is not None: return
+        while self.queue:
+            aid=self.queue.pop(0); a=self.by_id(aid)
+            if not a or aid in self.unlocked: continue
+            if not target_pids(a) and not self.hidden.get(aid): continue
+            self.current=aid; self.failed=0; self.cooldown_until=0; self.lock_text.set(f"{a['name']} is protected. Enter your PIN to unlock it."); self.make_lock_window(a); return
+
+    def make_lock_window(self,a):
+        if self.lock_win and self.lock_win.winfo_exists(): self.lock_win.lift(); return
+        w=tk.Toplevel(self.root); self.lock_win=w; w.title(f"{APP_NAME} - {a['name']}"); w.geometry("480x290"); w.resizable(False,False); w.attributes("-topmost",True); w.protocol("WM_DELETE_WINDOW",self.refuse_close)
+        f=ttk.Frame(w,padding=24); f.pack(fill="both",expand=True); ttk.Label(f,text=APP_NAME,font=("Segoe UI",18,"bold")).pack(); ttk.Label(f,text=f"{a['name']} is locked.",font=("Segoe UI",11)).pack(pady=(8,12)); ttk.Label(f,textvariable=self.lock_text,wraplength=420,justify="center").pack()
+        self.pin_entry=ttk.Entry(f,show="*",justify="center",font=("Segoe UI",14)); self.pin_entry.pack(fill="x",pady=12); self.pin_entry.bind("<Return>",lambda e:self.try_unlock()); self.unlock_btn=ttk.Button(f,text="Unlock",command=self.try_unlock); self.unlock_btn.pack(); self.pin_entry.focus_force()
+
+    def refuse_close(self):
+        if self.lock_win: self.lock_win.bell(); self.lock_win.lift()
+        self.lock_text.set("Enter the PIN to unlock this application.")
+
+    def try_unlock(self):
+        if self.current is None or self.pin_entry is None: return
+        remain=int(self.cooldown_until-time.time())
+        if remain>0: self.lock_text.set(f"Too many attempts. Try again in {remain+1} seconds."); return
+        entered=self.pin_entry.get(); self.pin_entry.delete(0,"end")
+        if check_pin(entered,self.cfg.get("pin")): return self.unlock_current()
+        self.failed+=1; left=FAILED_LIMIT-self.failed
+        if left>0: self.lock_text.set(f"Incorrect PIN. {left} attempt(s) remaining."); return
+        self.failed=0; self.cooldown_until=time.time()+COOLDOWN_SECONDS; self.cooldown_tick()
+
+    def cooldown_tick(self):
+        if self.pin_entry is None: return
+        remain=int(self.cooldown_until-time.time())
+        if remain<=0:
+            self.pin_entry.configure(state="normal"); self.unlock_btn.configure(state="normal"); self.lock_text.set("You can try again."); self.pin_entry.focus_force(); return
+        self.pin_entry.configure(state="disabled"); self.unlock_btn.configure(state="disabled"); self.lock_text.set(f"Too many attempts. Try again in {remain+1} seconds."); self.root.after(250,self.cooldown_tick)
+
+    def unlock_current(self):
+        aid=self.current; a=self.by_id(aid)
+        if not a: return self.finish_prompt()
+        first=None
+        for hwnd in list(self.hidden.get(aid,set())):
+            if show(hwnd) and first is None: first=hwnd
+        self.hidden[aid]=set(); self.unlocked.add(aid); self.status.set(f"{a['name']} is Unlocked for this running session."); self.finish_prompt(); self.refresh()
+        if first and user32.IsWindow(first): user32.SetForegroundWindow(first)
+
+    def finish_prompt(self):
+        if self.lock_win and self.lock_win.winfo_exists(): self.lock_win.attributes("-topmost",False); self.lock_win.destroy()
+        self.lock_win=self.pin_entry=self.unlock_btn=None; self.current=None; self.root.after(100,self.show_next)
+
+    def monitor(self):
+        procs=processes(); changed=False
+        for a in self.apps():
+            aid=str(a["id"]); now=target_pids(a,procs); before=self.last_pids.get(aid,set())
+            if aid in self.unlocked and before and not now:
+                self.unlocked.discard(aid); self.hidden[aid]=set(); self.status.set(f"{a['name']} closed and was automatically relocked."); changed=True
+            self.last_pids[aid]=set(now)
+            if aid not in self.unlocked and now:
+                h=self.hidden.setdefault(aid,set())
+                for hwnd in app_windows(a,True,procs):
+                    if hide(hwnd): h.add(hwnd)
+                h.difference_update({x for x in h if not user32.IsWindow(x)})
+                if h: self.enqueue(aid)
+        if changed: self.refresh()
+        # Update visible status roughly once per monitor cycle.
+        self.refresh()
+        if self.lock_win and self.lock_win.winfo_exists(): self.lock_win.attributes("-topmost",True)
+        self.root.after(MONITOR_MS,self.monitor)
+
+    def toggle_startup(self):
+        enabled=bool(self.startup_var.get())
+        try: set_startup(enabled)
+        except OSError as e: self.startup_var.set(startup_exists()); return messagebox.showerror(APP_NAME,f"Could not change startup setting.\n\n{e}",parent=self.root)
+        self.cfg["start_with_windows"]=enabled; save_config(self.cfg); self.status.set("Start with Windows enabled." if enabled else "Start with Windows disabled.")
+
+    def open_config_folder(self):
+        try:
+            APPDATA.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(APPDATA))
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"Could not open the configuration folder.\n\n{exc}", parent=self.root)
+
+    def open_program_folder(self):
+        try:
+            os.startfile(str(program_dir()))
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"Could not open the application folder.\n\n{exc}", parent=self.root)
+
+    def open_github_repository(self):
+        open_web_url(GITHUB_REPO_URL, self.root, "GitHub repository")
+
+    def open_github_latest_release(self):
+        open_web_url(GITHUB_LATEST_RELEASE_URL, self.root, "latest GitHub release")
+
+    def open_github_releases(self):
+        open_web_url(GITHUB_RELEASES_URL, self.root, "GitHub releases page")
+
+    def open_github_new_issue(self):
+        open_web_url(GITHUB_NEW_ISSUE_URL, self.root, "GitHub issue form")
+
+    def open_github_issues(self):
+        open_web_url(GITHUB_ISSUES_URL, self.root, "GitHub issues page")
+
+    def copy_github_url(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(GITHUB_REPO_URL)
+        self.status.set("GitHub repository URL copied to the clipboard.")
+
+    def open_help_html(self):
+        open_local_document("WindowGuard_Help.html", self.root)
+
+    def open_help_pdf(self):
+        open_local_document("WindowGuard_Help.pdf", self.root)
+
+    def about(self):
+        w = tk.Toplevel(self.root)
+        w.title(f"About {APP_NAME}")
+        w.geometry("560x455")
+        w.resizable(False, False)
+        w.transient(self.root)
+
+        f = ttk.Frame(w, padding=24)
+        f.pack(fill="both", expand=True)
+
+        ttk.Label(f, text=APP_NAME, font=("Segoe UI", 20, "bold")).pack()
+        ttk.Label(f, text=f"Version {APP_VERSION}", font=("Segoe UI", 10)).pack(pady=(2, 14))
+        ttk.Label(
+            f,
+            text=(
+                "Window Guard is an open-source Windows privacy utility that protects "
+                "selected desktop applications with a PIN and automatically relocks "
+                "them after they close."
+            ),
+            wraplength=490,
+            justify="center",
+        ).pack(pady=(0, 14))
+
+        ttk.Label(f, text="Author: Giorgos Xanthopoulos", font=("Segoe UI", 10, "bold")).pack()
+        ttk.Label(f, text="aka gexos").pack(pady=(2, 0))
+        ttk.Label(f, text="License: MIT License").pack(pady=(6, 0))
+        ttk.Label(f, text="GitHub: github.com/gexos/window-guard").pack(pady=(4, 0))
+
+        ttk.Label(
+            f,
+            text=(
+                "Security note: Window Guard is a privacy/convenience lock, not "
+                "administrator-proof Windows security."
+            ),
+            wraplength=490,
+            justify="center",
+        ).pack(pady=(18, 14))
+
+        buttons = ttk.Frame(f)
+        buttons.pack(pady=(6, 0))
+        ttk.Button(buttons, text="GitHub", command=self.open_github_repository).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="Open Help", command=self.open_help_html).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="Close", command=w.destroy).pack(side="left")
+
+    def diagnostics(self):
+        procs=processes(); lines=[f"{APP_NAME} {APP_VERSION} diagnostic report","",f"Unlocked runtime IDs: {sorted(self.unlocked)}",""]
+        allp=set()
+        for i,a in enumerate(self.apps(),1):
+            p=target_pids(a,procs); allp.update(p); state="Unlocked" if str(a["id"]) in self.unlocked else "Locked"; lines += [f"[{i}] {a['name']}",f"State: {state}",f"Path: {a['path']}",f"Matched PIDs: {sorted(p) or '(none)'}",""]
+        lines += ["VISIBLE WINDOWS","-"*70]
+        @WNDENUMPROC
+        def cb(hwnd,_):
+            if user32.IsWindow(hwnd) and user32.IsWindowVisible(hwnd):
+                title=window_title(hwnd).strip(); pid=window_pid(hwnd)
+                if title: lines.append(f"PID={pid} | EXE={procs.get(pid,{}).get('name','?')} | HWND={int(hwnd)} | TITLE={title}" + (" <== PROTECTED" if pid in allp else ""))
+            return True
+        user32.EnumWindows(cb,0); report="\n".join(lines)
+        w=tk.Toplevel(self.root); w.title(f"{APP_NAME} Diagnostics"); w.geometry("960x580"); t=tk.Text(w,wrap="none",font=("Consolas",10)); t.pack(fill="both",expand=True,padx=10,pady=10); t.insert("1.0",report); t.configure(state="disabled")
+        def copy(): w.clipboard_clear(); w.clipboard_append(report); self.status.set("Diagnostic report copied.")
+        ttk.Button(w,text="Copy Report",command=copy).pack(pady=(0,10))
+
+    def start_tray(self):
+        if pystray is None: return
+        menu=pystray.Menu(pystray.MenuItem("Show Window Guard",lambda i,x:self.root.after(0,self.show_main),default=True),pystray.MenuItem("Lock All Now",lambda i,x:self.root.after(0,self.lock_all)),pystray.Menu.SEPARATOR,pystray.MenuItem("Exit",lambda i,x:self.root.after(0,self.exit_app)))
+        self.tray=pystray.Icon("WindowGuard",tray_image(),APP_NAME,menu); threading.Thread(target=self.tray.run,daemon=True).start()
+
+    def show_main(self): self.root.deiconify(); self.root.lift()
+    def hide_to_tray(self): self.root.withdraw() if pystray is not None else self.exit_app()
+    def exit_app(self):
+        for handles in self.hidden.values():
+            for hwnd in list(handles): show(hwnd)
+        if self.tray:
+            try: self.tray.stop()
+            except: pass
+        self.root.destroy()
+
+def main():
+    if pystray is None or Image is None:
+        r=tk.Tk(); r.withdraw(); messagebox.showerror(APP_NAME,"Install required packages:\n\npython -m pip install pystray pillow"); r.destroy(); return
+    r=tk.Tk()
+    try:
+        style=ttk.Style(r)
+        if "vista" in style.theme_names(): style.theme_use("vista")
+    except tk.TclError: pass
+    WindowGuard(r,start_hidden="--startup" in sys.argv); r.mainloop()
+
+if __name__ == "__main__": main()

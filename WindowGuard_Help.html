@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Window Guard v0.5.0 - Help Manual</title>
+<style>
+:root{--bg:#f5f7fa;--paper:#fff;--ink:#18202a;--muted:#5b6673;--line:#dfe5ec;--accent:#26384d;--soft:#eef3f7;--warn:#fff4d6;--danger:#fdebec}
+*{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Arial,sans-serif;line-height:1.58}
+.page{max-width:980px;margin:32px auto;background:var(--paper);box-shadow:0 8px 30px rgba(0,0,0,.08);padding:54px 64px 70px;border-radius:12px}
+h1,h2,h3{color:#132235;line-height:1.22} h1{font-size:2.3rem;margin:0 0 6px} h2{margin-top:40px;padding-bottom:8px;border-bottom:1px solid var(--line);font-size:1.55rem} h3{margin-top:28px;font-size:1.15rem}
+.subtitle{color:var(--muted);font-size:1.05rem;margin-bottom:26px}.badge{display:inline-block;background:var(--accent);color:#fff;border-radius:999px;padding:5px 12px;font-size:.86rem;font-weight:600;margin-right:6px}
+.toc{background:var(--soft);padding:20px 24px;border-radius:10px;margin:28px 0}.toc ul{columns:2;margin:8px 0 0;padding-left:20px}.toc a{color:#244d73;text-decoration:none}.toc a:hover{text-decoration:underline}
+.note,.warning,.security{padding:14px 18px;border-left:4px solid #73869a;border-radius:6px;margin:18px 0}.note{background:var(--soft)}.warning{background:var(--warn);border-color:#b58118}.security{background:var(--danger);border-color:#a8464e}
+code,kbd{font-family:Consolas,"Courier New",monospace;background:#f0f2f4;border:1px solid #e0e4e8;border-radius:4px;padding:1px 5px} pre{background:#151b23;color:#e8edf2;padding:16px 18px;border-radius:8px;overflow:auto;line-height:1.42} pre code{background:none;border:0;padding:0;color:inherit}
+table{border-collapse:collapse;width:100%;margin:16px 0 24px}th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}th{background:#edf2f6}ol,ul{padding-left:24px}li{margin:5px 0}.small{font-size:.9rem;color:var(--muted)}.footer{border-top:1px solid var(--line);margin-top:48px;padding-top:18px;color:var(--muted);font-size:.9rem}
+@media(max-width:760px){.page{margin:0;padding:28px 20px;border-radius:0}.toc ul{columns:1}}
+@media print{body{background:#fff}.page{box-shadow:none;margin:0;max-width:none;padding:28px 38px}.toc a{color:#000}h2{break-after:avoid}pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-size:.82rem}pre,table,.note,.warning,.security{break-inside:avoid}a{text-decoration:none;color:#000}}
+</style>
+</head>
+<body>
+<main class="page">
+<h1>Window Guard</h1>
+<div class="subtitle">Complete Help Manual - Version 0.5.0</div>
+<p><span class="badge">Windows</span><span class="badge">Open Source</span><span class="badge">MIT License</span></p>
+
+<p>Window Guard is a Windows privacy utility that protects selected desktop applications with a PIN. Protected applications remain registered after they close, and an application automatically returns to the <strong>Locked</strong> state when its running process ends. The next time it opens, Window Guard hides its visible window and asks for the PIN again.</p>
+
+<div class="security"><strong>Important:</strong> Window Guard is a privacy and convenience lock. It is not a replacement for Windows account security and is not designed to resist a Windows administrator, Task Manager, debugging tools, or a user who can modify the program configuration.</div>
+
+<nav class="toc">
+<strong>Contents</strong>
+<ul>
+<li><a href="#overview">1. Overview</a></li>
+<li><a href="#requirements">2. Requirements</a></li>
+<li><a href="#install">3. Running and Installation</a></li>
+<li><a href="#firstsetup">4. First Setup</a></li>
+<li><a href="#addapps">5. Adding Protected Apps</a></li>
+<li><a href="#states">6. Locked and Unlocked States</a></li>
+<li><a href="#persistent">7. Persistent Relock Behavior</a></li>
+<li><a href="#pin">8. PIN Management</a></li>
+<li><a href="#manual">9. Manual Locking</a></li>
+<li><a href="#tray">10. System Tray</a></li>
+<li><a href="#startup">11. Start with Windows</a></li>
+<li><a href="#diagnostics">12. Diagnostics</a></li>
+<li><a href="#help-menu">13. Menus and GitHub Integration</a></li>
+<li><a href="#config">14. Configuration</a></li>
+<li><a href="#build">15. Building the EXE</a></li>
+<li><a href="#portable">16. Firefox Portable</a></li>
+<li><a href="#troubleshooting">17. Troubleshooting</a></li>
+<li><a href="#forgotpin">18. Forgotten PIN</a></li>
+<li><a href="#security">19. Security Model</a></li>
+<li><a href="#antivirus">20. Antivirus / False Positives</a></li>
+<li><a href="#opensource">21. Open Source and License</a></li>
+</ul>
+</nav>
+
+<h2 id="overview">1. Overview</h2>
+<p>Window Guard monitors applications you explicitly add to its protected-app list. Each protected application has its own runtime lock state. Unlocking Firefox, for example, does not unlock Notepad++.</p>
+<table>
+<tr><th>Feature</th><th>What it does</th></tr>
+<tr><td>Persistent protection</td><td>An app remains registered until you choose <strong>Remove Selected</strong>.</td></tr>
+<tr><td>Per-app PIN lock</td><td>Each protected app can be Locked or Unlocked independently.</td></tr>
+<tr><td>Relock on close</td><td>When an unlocked app fully exits, it becomes Locked again for its next launch.</td></tr>
+<tr><td>Window hiding</td><td>Window Guard hides visible top-level windows belonging to a locked protected app.</td></tr>
+<tr><td>System tray</td><td>The main Window Guard interface can stay out of the way while protection continues.</td></tr>
+<tr><td>Start with Windows</td><td>Optional per-user Windows startup entry.</td></tr>
+<tr><td>Diagnostics</td><td>Displays process, PID, executable, and window information for troubleshooting.</td></tr>
+</table>
+
+<h2 id="requirements">2. Requirements</h2>
+<h3>Running the compiled EXE</h3>
+<ul><li>Windows 10 or Windows 11</li><li>No Python installation is required when using the standalone PyInstaller build.</li></ul>
+<h3>Running from source</h3>
+<ul><li>Python 3.10 or newer</li><li><code>pystray</code></li><li><code>Pillow</code></li></ul>
+<pre><code>python -m pip install -r requirements.txt</code></pre>
+
+<h2 id="install">3. Running and Installation</h2>
+<p>Window Guard is intended to be portable. It does not require a traditional installer.</p>
+<h3>From source</h3>
+<pre><code>python window_guard.py</code></pre>
+<p>You can also run <code>run_window_guard.bat</code>. The batch file checks for the required runtime packages.</p>
+<h3>Standalone EXE</h3>
+<p>Run <code>WindowGuard.exe</code>. Keep <code>WindowGuard_Help.html</code> and <code>WindowGuard_Help.pdf</code> in the same folder if you want the Help menu to open the manuals.</p>
+
+<h2 id="firstsetup">4. First Setup</h2>
+<ol>
+<li>Start Window Guard.</li>
+<li>Open an application you want to protect, such as Firefox.</li>
+<li>Click <strong>Add Running App</strong>.</li>
+<li>Select the real application executable from the list.</li>
+<li>Click <strong>Set / Change PIN</strong> and create a PIN.</li>
+<li>The application is protected and is considered <strong>Locked</strong> by default.</li>
+</ol>
+<div class="note"><strong>Tip:</strong> Adding a running app is normally better than browsing for an EXE, because it identifies the executable that actually owns the visible window.</div>
+
+<h2 id="addapps">5. Adding Protected Applications</h2>
+<h3>Add Running App</h3>
+<p>This is the recommended method. The selector displays:</p>
+<ul><li>Window title</li><li>Executable name</li><li>PID</li><li>Full executable path</li></ul>
+<p>Double-click a row or select it and choose <strong>Add Selected App</strong>.</p>
+<h3>Browse EXE</h3>
+<p>Use <strong>Browse EXE...</strong> when the target application is not currently running. Select the real executable file, not a launcher, updater, shortcut, or bootstrap program whenever possible.</p>
+<h3>Removing protection</h3>
+<p>Select an application in the protected-app list and click <strong>Remove Selected</strong>. This removes it from Window Guard's persistent protection list.</p>
+
+<h2 id="states">6. Locked and Unlocked States</h2>
+<table>
+<tr><th>State</th><th>Meaning</th></tr>
+<tr><td><strong>Locked</strong></td><td>If the application is running or starts later, Window Guard hides its visible window and requires the PIN.</td></tr>
+<tr><td><strong>Unlocked</strong></td><td>The correct PIN has been entered for the application's current running session. Its windows are allowed to remain visible.</td></tr>
+</table>
+<p>The <strong>Running</strong> column is separate from the protection state. For example:</p>
+<pre><code>firefox.exe      Unlocked    Yes
+notepad++.exe    Locked      No</code></pre>
+
+<h2 id="persistent">7. Persistent Relock Behavior</h2>
+<p>This is the central behavior introduced in Window Guard v0.4.x.</p>
+<pre><code>Protected app starts
+        |
+        v
+Window Guard detects it
+        |
+        v
+Visible window is hidden
+        |
+        v
+PIN is requested
+        |
+        v
+Correct PIN -> app is Unlocked
+        |
+        v
+User closes the app completely
+        |
+        v
+Window Guard detects that the process ended
+        |
+        v
+App automatically returns to Locked
+        |
+        v
+Next launch requires the PIN again</code></pre>
+<p>Closing an application does <strong>not</strong> remove it from the protected list.</p>
+<div class="note">Restarting Window Guard also returns protected apps to the Locked runtime state. The list of protected apps itself remains stored in the configuration.</div>
+
+<h2 id="pin">8. PIN Management</h2>
+<p>Use <strong>Set / Change PIN</strong> to create or replace the PIN.</p>
+<ul><li>PIN length: 4 to 12 digits</li><li>The PIN is not stored in plain text.</li><li>Window Guard stores a random salt and a PBKDF2-HMAC-SHA256 derived hash.</li><li>Changing an existing PIN requires the current PIN.</li></ul>
+<p>After repeated incorrect attempts, Window Guard temporarily disables PIN entry for a cooldown period.</p>
+
+<h2 id="manual">9. Manual Locking</h2>
+<h3>Lock Selected App</h3>
+<p>Select a protected application and click <strong>Lock Selected App</strong>. If it is currently running and visible, Window Guard hides its windows and asks for the PIN.</p>
+<h3>Lock All Now</h3>
+<p>Returns every protected app to Locked. Any visible protected windows are hidden.</p>
+<p>The tray menu also includes <strong>Lock All Now</strong>.</p>
+
+<h2 id="tray">10. System Tray</h2>
+<p>Closing the main Window Guard window minimizes it to the Windows notification area instead of stopping protection.</p>
+<p>The tray menu provides:</p>
+<ul><li><strong>Show Window Guard</strong></li><li><strong>Lock All Now</strong></li><li><strong>Exit</strong></li></ul>
+<p>Protection monitoring continues while the main window is hidden.</p>
+
+<h2 id="startup">11. Start with Windows</h2>
+<p>Enable <strong>Start Window Guard with Windows</strong> to register Window Guard in the current user's startup registry key:</p>
+<pre><code>HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run</code></pre>
+<p>No administrator rights should normally be required for this setting. When launched by Windows startup, Window Guard starts hidden in the system tray.</p>
+<div class="warning"><strong>Portable EXE note:</strong> If you move <code>WindowGuard.exe</code> after enabling Start with Windows, disable and re-enable the option so the startup entry points to the new location.</div>
+
+<h2 id="diagnostics">12. Diagnostics</h2>
+<p>Click <strong>Diagnostics</strong> when an application is not detected or is not being hidden correctly. The report includes:</p>
+<ul><li>Protected application name and path</li><li>Locked / Unlocked state</li><li>Matched process IDs</li><li>Visible top-level windows</li><li>Executable names</li><li>Window handles and titles</li></ul>
+<p>Use <strong>Copy Report</strong> to copy the diagnostic information for bug reports. Review the text before posting it publicly because window titles may contain names of websites, documents, or files you currently have open.</p>
+
+<h2 id="help-menu">13. Menus and GitHub Integration</h2>
+<p>Window Guard v0.5.0 introduces a complete menu bar so the main actions are available both from buttons and from standard Windows menus.</p>
+<h3>File</h3>
+<ul>
+<li><strong>Lock All Now</strong> - immediately returns all protected applications to Locked.</li>
+<li><strong>Hide to Tray</strong> - hides the main Window Guard window while monitoring continues.</li>
+<li><strong>Exit</strong> - closes Window Guard and restores windows that it currently has hidden.</li>
+</ul>
+<h3>Applications</h3>
+<ul>
+<li><strong>Add Running App...</strong> - recommended method for adding a protected application.</li>
+<li><strong>Browse EXE...</strong> - selects an application executable manually.</li>
+<li><strong>Lock Selected App</strong> - locks the selected protected application immediately.</li>
+<li><strong>Remove Selected</strong> - removes the selected application from persistent protection.</li>
+</ul>
+<h3>Tools</h3>
+<ul>
+<li><strong>Set / Change PIN</strong> - creates or replaces the Window Guard PIN.</li>
+<li><strong>Diagnostics</strong> - shows process and window information used for troubleshooting.</li>
+<li><strong>Open Configuration Folder</strong> - opens <code>%APPDATA%\WindowGuard</code>.</li>
+<li><strong>Open Application Folder</strong> - opens the folder containing <code>WindowGuard.exe</code> or the Python source.</li>
+<li><strong>Start Window Guard with Windows</strong> - enables or disables the per-user Windows startup entry.</li>
+</ul>
+<h3>GitHub</h3>
+<p>The GitHub menu links directly to the official open-source repository:</p>
+<pre><code>https://github.com/gexos/window-guard</code></pre>
+<ul>
+<li><strong>Open Repository</strong> - opens the project source code.</li>
+<li><strong>Latest Release</strong> - opens the latest published GitHub release.</li>
+<li><strong>All Releases</strong> - opens the complete releases page.</li>
+<li><strong>Report Bug / Request Feature</strong> - opens GitHub's issue-template chooser.</li>
+<li><strong>View Issues</strong> - opens existing project issues.</li>
+<li><strong>Copy Repository URL</strong> - copies the repository address to the clipboard.</li>
+</ul>
+<div class="note"><strong>Open-source workflow:</strong> Bug reports and feature requests should use the repository issue forms so reports contain the Windows version, Window Guard version, reproduction steps, and relevant diagnostics.</div>
+<h3>Help</h3>
+<ul>
+<li><strong>Help Contents (HTML)</strong> - opens <code>WindowGuard_Help.html</code> in the default browser.</li>
+<li><strong>User Manual (PDF)</strong> - opens <code>WindowGuard_Help.pdf</code> in the default PDF viewer.</li>
+<li><strong>About Window Guard</strong> - shows the version, author, license, project repository, project purpose, and security notice.</li>
+</ul>
+<p>The HTML and PDF help files must be kept in the same directory as <code>WindowGuard.exe</code> for the Help menu to find them.</p>
+
+<h2 id="config">14. Configuration</h2>
+<p>User settings are stored in:</p>
+<pre><code>%APPDATA%\WindowGuard\config.json</code></pre>
+<p>The file contains the protected-app list, executable paths, startup preference, and PIN verification data. It does not contain the actual PIN in readable form.</p>
+<p>Do not include your personal <code>config.json</code> in public GitHub commits or release packages.</p>
+
+<h2 id="build">15. Building WindowGuard.exe</h2>
+<h3>Install build requirements</h3>
+<pre><code>python -m pip install --upgrade -r requirements-build.txt</code></pre>
+<h3>Build manually</h3>
+<pre><code>python -m PyInstaller --noconfirm --clean --onefile --windowed --name WindowGuard window_guard.py</code></pre>
+<h3>Build with the included batch file</h3>
+<p>Double-click <code>build_window_guard.bat</code>. The script builds the EXE and copies the HTML/PDF help files into the <code>dist</code> folder.</p>
+<p>The release directory will contain:</p>
+<pre><code>dist\
+  WindowGuard.exe
+  WindowGuard_Help.html
+  WindowGuard_Help.pdf</code></pre>
+
+<h2 id="portable">16. Firefox Portable and Launcher Applications</h2>
+<p>Portable application launchers may not own the actual visible window. For example, <code>FirefoxPortable.exe</code> launches the real <code>firefox.exe</code>, and the browser window belongs to <code>firefox.exe</code>.</p>
+<p>For Firefox Portable:</p>
+<ol><li>Open Firefox Portable.</li><li>Choose <strong>Add Running App</strong>.</li><li>Select the visible Firefox window whose executable is <code>firefox.exe</code>.</li></ol>
+<div class="warning">If you protect only a launcher EXE that does not own the visible window, Window Guard may not be able to hide the application correctly.</div>
+
+<h2 id="troubleshooting">17. Troubleshooting</h2>
+<h3>The app is running but Window Guard does not detect it</h3>
+<ul>
+<li>Use <strong>Add Running App</strong> instead of Browse EXE.</li>
+<li>Confirm the executable listed for the visible window.</li>
+<li>Run Diagnostics and check the matched PIDs.</li>
+<li>If the target app runs as administrator, try running Window Guard as administrator as well.</li>
+</ul>
+<h3>The window briefly appears before being hidden</h3>
+<p>Window Guard monitors normal Windows desktop windows at short intervals. It does not block process creation at the operating-system security layer, so a very brief visual appearance may be possible before the window is hidden.</p>
+<h3>Help files do not open</h3>
+<p>Confirm these files are in the same folder as <code>WindowGuard.exe</code>:</p>
+<pre><code>WindowGuard_Help.html
+WindowGuard_Help.pdf</code></pre>
+<h3>A GitHub menu item does not open</h3>
+<p>Window Guard uses the default web browser for GitHub links. Confirm Windows has a default browser configured and that the repository address is reachable.</p>
+<h3>The tray icon is missing</h3>
+<p>If running from source, install:</p>
+<pre><code>python -m pip install pystray pillow</code></pre>
+<p>Also check the Windows notification-area overflow panel.</p>
+<h3>Start with Windows stopped working after moving the EXE</h3>
+<p>Disable and re-enable <strong>Start Window Guard with Windows</strong> after moving the executable.</p>
+
+<h2 id="forgotpin">18. Forgotten PIN</h2>
+<p>Window Guard does not contain a PIN-recovery feature because the original PIN is not stored.</p>
+<p>If you lose the PIN, the configuration can be reset by closing Window Guard and removing its configuration file:</p>
+<pre><code>%APPDATA%\WindowGuard\config.json</code></pre>
+<p>This removes the saved PIN data and protected-app list, so Window Guard will behave like a new installation.</p>
+<div class="security">The fact that a local user can terminate Window Guard or remove its configuration is part of the documented security limitation. Window Guard is not intended to defend against someone who already controls the Windows account.</div>
+
+<h2 id="security">19. Security Model and Limitations</h2>
+<p>Window Guard is intended to prevent casual access to selected application windows when the utility is running. It does not create an operating-system security boundary.</p>
+<p>A user with enough Windows access may bypass it by:</p>
+<ul>
+<li>Ending <code>WindowGuard.exe</code> in Task Manager</li>
+<li>Deleting or modifying its configuration</li>
+<li>Using another Windows account</li>
+<li>Using administrative or debugging tools</li>
+<li>Running an alternate copy or installation of the protected application</li>
+</ul>
+<p>For genuine workstation protection, use a Windows account password/PIN and lock the workstation with <kbd>Windows</kbd> + <kbd>L</kbd>.</p>
+
+<h2 id="antivirus">20. Antivirus / False Positives</h2>
+<p>Standalone Window Guard builds are created with PyInstaller. Some antivirus engines occasionally flag PyInstaller-packaged applications even when the source code is legitimate.</p>
+<p>For public releases:</p>
+<ul><li>Publish the complete source code.</li><li>Allow users to build the EXE themselves.</li><li>Publish a SHA-256 hash for the official release binary.</li><li>Do not tell users to disable their antivirus software.</li></ul>
+
+<h2 id="opensource">21. Open Source and License</h2>
+<p>Window Guard is open-source software released under the MIT License.</p>
+<p><strong>Author:</strong> Giorgos Xanthopoulos <strong>aka gexos</strong></p>
+<p><strong>GitHub:</strong> <code>https://github.com/gexos/window-guard</code></p>
+<p>The source code may be inspected, modified, forked, and redistributed according to the terms of the MIT License.</p>
+
+<div class="footer">
+Window Guard Help Manual - v0.5.0<br>
+Copyright (c) 2026 Giorgos Xanthopoulos (aka gexos). Released under the MIT License.
+</div>
+</main>
+</body>
+</html>

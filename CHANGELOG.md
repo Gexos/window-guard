@@ -1,54 +1,53 @@
 # Changelog
 
-## [0.3.0] - 2026-08-16
+## [0.5.0] - 2026-09-21
 
 ### Added
-- Multiple protected applications
-- Windows system tray icon
-- Tray actions: Show Window Guard, Lock Now, Exit
-- Start with Windows option
-- Continuous lock monitoring
-- Automatic hiding of protected windows opened while locked
-- Migration from older single-application configuration
-- Exit protection while Window Guard is locked
 
-### Kept
-- Select Running App workflow
-- Manual `.exe` selection
-- PIN creation and change
-- PBKDF2-HMAC-SHA256 PIN hashing
-- Failed-attempt cooldown
-- Diagnostics window
-- Portable PyInstaller build support
+- Complete menu bar: File, Applications, Tools, GitHub, Help
+- Direct link to the official GitHub repository
+- Latest Release and All Releases menu actions
+- Report Bug / Request Feature action using GitHub's issue chooser
+- View Issues action
+- Copy Repository URL action
+- Open Configuration Folder
+- Open Application Folder
+- GitHub button in the About window
+- Full author name in About: **Giorgos Xanthopoulos aka gexos**
+- GitHub issue forms for bug reports and feature requests
+- Pull request template
+- GitHub Actions Python syntax-check workflow
+
+### Changed
+
+- About window expanded with project repository information
+- Help manual updated for the v0.5.0 menu system and GitHub workflow
+- MIT copyright notice now uses the author's full name
+
+## [0.4.1]
+
+- Added Help menu
+- Added HTML and PDF manuals
+- Added About Window Guard
+
+## [0.4.0]
+
+- Persistent per-application protection
+- Independent Locked / Unlocked runtime states
+- Automatic relock when an app fully closes
+- Lock Selected App and Lock All Now
+
+## [0.3.0]
+
+- Multiple protected applications
+- System tray
+- Start with Windows
+- Continuous protection monitoring
 
 ## [0.2.0]
 
-### Added
-- Select Running App
-- Visible-window list showing title, executable, PID, and path
-- Double-click application selection
-- Refresh button
-
-## [0.1.3]
-
-### Changed
-- Improved portable-launcher handling
-
-## [0.1.2]
-
-### Added
-- Diagnostics report
-- Native Windows process enumeration
-
-## [0.1.1]
-
-### Fixed
-- Improved executable matching
+- Select Running App workflow
 
 ## [0.1.0]
 
-### Added
 - Initial prototype
-- Single protected application
-- PIN lock/unlock
-- Window hide/restore

@@ -1,188 +1,125 @@
 # Window Guard
 
-**Window Guard** is an open-source Windows privacy utility that lets you protect selected desktop applications with a PIN.
+**Window Guard** is an open-source Windows privacy utility that protects selected desktop applications with a PIN.
 
-It can hide protected application windows, keep watching for newly opened protected windows while locked, restore them after PIN verification, run from the Windows system tray, and optionally start with Windows.
+Protected applications remain registered after they close. When an unlocked application fully exits, Window Guard automatically returns it to **Locked**, so the next launch requires the PIN again.
 
-> **Current release:** v0.3.0 — Early Preview
+> Current development release: **v0.5.0**
 
-## Features
+## Highlights
 
-- Protect multiple Windows applications
-- Select the real running application from a visible-window list
-- Manual `.exe` selection when needed
-- Lock all protected applications with **Lock Now**
-- Automatically hide protected windows opened while Window Guard is locked
-- Restore hidden windows after the correct PIN is entered
+- Persistent per-application protection
+- Independent **Locked / Unlocked** state for each protected app
+- Automatic relock when an unlocked app closes
+- Select the real application from currently visible windows
+- Protect multiple applications with one PIN
 - System tray support
-- Start with Windows option
-- Failed-PIN cooldown after repeated incorrect attempts
-- Salted PBKDF2-HMAC-SHA256 PIN hashing
-- Diagnostics window for troubleshooting
-- Portable single-EXE build with PyInstaller
+- Optional Start with Windows
+- Diagnostics for application/process detection
+- Complete HTML and PDF help manual
+- Direct GitHub menu for repository, releases, issues, and bug reports
+- Open source under the MIT License
 
-## Requirements
-
-For running from Python:
-
-- Windows 10 or Windows 11
-- Python 3.10 or newer
-- `pystray`
-- `Pillow`
-
-Install the runtime dependencies:
-
-```bat
-python -m pip install -r requirements.txt
-```
-
-## Running from Source
-
-```bat
-python window_guard.py
-```
-
-Or double-click:
-
-```text
-run_window_guard.bat
-```
-
-## First Use
+## Quick Start
 
 1. Open the application you want to protect.
 2. Start Window Guard.
 3. Click **Add Running App**.
-4. Select the visible application window.
-5. Confirm that the executable shown is the real application executable.
-6. Add more applications if desired.
-7. Click **Set / Change PIN**.
-8. Create a PIN containing 4 to 12 digits.
-9. Click **Lock Now**.
-10. Enter the correct PIN to restore the protected windows.
+4. Select the real application executable from the list.
+5. Click **Set / Change PIN**.
+6. Enter the PIN when Window Guard hides the protected app.
+7. Close the protected app completely.
+8. The application automatically returns to **Locked** for its next launch.
 
-### Firefox Portable
+## Menu Bar
 
-Portable launchers can be misleading because the launcher may not own the visible application window.
+Window Guard v0.5.0 adds a more complete menu system:
 
-For Firefox Portable, use **Add Running App** and select the row whose executable is:
+- **File** - Lock All Now, Hide to Tray, Exit
+- **Applications** - Add Running App, Browse EXE, Lock Selected, Remove Selected
+- **Tools** - PIN management, Diagnostics, configuration/application folders, Start with Windows
+- **GitHub** - Repository, Latest Release, Releases, Issues, Report Bug / Request Feature
+- **Help** - HTML help, PDF manual, About Window Guard
 
-```text
-firefox.exe
+## Firefox Portable
+
+For Firefox Portable, protect the real browser process shown by **Add Running App**:
+
+
+Do not rely on `FirefoxPortable.exe` if the visible Firefox window belongs to `firefox.exe`.
+
+## Requirements
+
+### Standalone EXE
+
+- Windows 10 or Windows 11
+- No Python installation required
+
+### Running from source
+
+- Python 3.10+
+- pystray
+- Pillow
+
+```bat
+python -m pip install -r requirements.txt
+python window_guard.py
 ```
 
-## System Tray
-
-Closing the main Window Guard window minimizes it to the Windows system tray.
-
-The tray menu provides:
-
-- **Show Window Guard**
-- **Lock Now**
-- **Exit**
-
-Window Guard refuses to exit normally while it is locked.
-
-## Start with Windows
-
-Enable:
-
-```text
-Start Window Guard with Windows
-```
-
-Window Guard creates a per-user startup entry under:
-
-```text
-HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
-```
-
-When Windows launches Window Guard at startup, the main window starts hidden in the tray.
-
-## Building WindowGuard.exe
-
-Install the build dependencies:
+## Building the EXE
 
 ```bat
 python -m pip install -r requirements-build.txt
-```
-
-Then build:
-
-```bat
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name WindowGuard window_guard.py
 ```
 
-Or double-click:
+Or run:
 
 ```text
 build_window_guard.bat
 ```
 
-The finished executable will be created at:
-
-```text
-dist\WindowGuard.exe
-```
-
-## Release Hash
-
-After building the EXE, run:
-
-```text
-hash_release.bat
-```
-
-This creates `SHA256SUMS.txt` containing the SHA-256 hash of `dist\WindowGuard.exe`.
+The build script also copies the HTML and PDF help files into `dist`.
 
 ## Configuration
 
-Window Guard stores its configuration under:
+Window Guard stores user configuration at:
 
 ```text
 %APPDATA%\WindowGuard\config.json
 ```
 
-The PIN itself is not stored in plain text. Window Guard stores a salt and a PBKDF2-derived hash.
+The PIN is not stored in plain text. Window Guard stores a random salt and a PBKDF2-HMAC-SHA256 derived hash.
 
-## Security Model and Limitations
+Do not commit your personal `config.json` to GitHub.
 
-Window Guard is a **privacy and convenience lock**, not a replacement for Windows account security.
+## Security Model
 
-A user with sufficient access to the computer may still be able to bypass Window Guard by:
+Window Guard is a **privacy and convenience lock**, not an operating-system security boundary.
 
-- Ending `WindowGuard.exe` in Task Manager
-- Deleting or modifying its configuration
-- Restarting protected applications in another context
-- Using another Windows account
-- Using administrative or debugging tools
+A user with enough access may bypass it by terminating Window Guard, deleting or modifying its configuration, using another Windows account, or using administrative/debugging tools.
 
-For actual workstation security, use Windows account protection and lock the workstation with `Windows + L`.
-
-These limitations are intentional and documented. Window Guard does not claim to provide tamper-resistant or administrator-proof application isolation.
+For genuine workstation security, use a Windows account password/PIN and `Windows + L`.
 
 ## Antivirus / False Positives
 
-Window Guard can be packaged as a standalone executable with PyInstaller. Some antivirus engines may occasionally flag PyInstaller-generated executables even when the underlying source code is legitimate.
+The standalone EXE is built with PyInstaller. Some antivirus engines occasionally flag PyInstaller-packaged executables. The full source is published so users can inspect and build Window Guard themselves.
 
-The complete source code is available in this repository so users can inspect the program and build it themselves.
+Official binary releases should include a SHA-256 hash.
 
-If you distribute a release build, publish its SHA-256 hash alongside the download.
+## Documentation
 
-## Project Status
+- `WindowGuard_Help.html`
+- `WindowGuard_Help.pdf`
+- `SECURITY.md`
+- `CONTRIBUTING.md`
+- `CHANGELOG.md`
 
-Window Guard is under active development. v0.3.0 should be treated as an early preview.
+## Author
 
-Bug reports, testing, code review, and improvement suggestions are welcome.
-
-## Screenshots
-
-Screenshots will be added as the interface is finalized.
+**Giorgos Xanthopoulos**  
+**aka gexos**
 
 ## License
 
 Window Guard is released under the [MIT License](LICENSE).
-
-## Author
-
-Giorgos Xanthopoulos aka gexos
