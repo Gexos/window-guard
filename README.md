@@ -45,6 +45,9 @@ Window Guard v0.5.0 adds a more complete menu system:
 
 For Firefox Portable, protect the real browser process shown by **Add Running App**:
 
+```text
+firefox.exe
+```
 
 Do not rely on `FirefoxPortable.exe` if the visible Firefox window belongs to `firefox.exe`.
 

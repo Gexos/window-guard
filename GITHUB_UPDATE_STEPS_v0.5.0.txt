@@ -1,0 +1,71 @@
+WINDOW GUARD v0.5.0 - GITHUB UPDATE STEPS
+===========================================
+
+Repository:
+https://github.com/gexos/window-guard
+
+STEP 1 - TEST LOCALLY
+Run v0.5.0 from Python first and test:
+- Add Running App
+- PIN unlock
+- Automatic relock after app closes
+- Every menu item
+- GitHub links
+- Help HTML/PDF
+- System tray
+- Start with Windows
+
+STEP 2 - COPY THE NEW REPOSITORY FILES
+Copy the contents of this GitHub package into your local window-guard repository.
+Allow the new files to replace older README/source/docs files.
+
+STEP 3 - REVIEW THE CHANGES
+Important new GitHub files:
+.github/ISSUE_TEMPLATE/bug_report.yml
+.github/ISSUE_TEMPLATE/feature_request.yml
+.github/ISSUE_TEMPLATE/config.yml
+.github/pull_request_template.md
+.github/workflows/python-syntax.yml
+
+STEP 4 - COMMIT
+Suggested commit message:
+Add v0.5.0 menus, GitHub integration and community templates
+
+STEP 5 - PUSH TO MAIN
+Push the commit to the repository's main branch.
+
+STEP 6 - CHECK GITHUB
+Confirm:
+- README renders correctly
+- Actions tab shows Python syntax check
+- New Issue shows Bug report and Feature request forms
+- Pull requests use the PR template
+
+STEP 7 - BUILD THE RELEASE
+Run:
+build_window_guard.bat
+
+Then test:
+dist\WindowGuard.exe
+
+STEP 8 - CREATE HASH
+Run:
+hash_release.bat
+
+STEP 9 - CREATE THE RELEASE
+Tag:
+v0.5.0
+
+Title:
+Window Guard v0.5.0
+
+Use RELEASE_NOTES_v0.5.0.md as the release description.
+
+Recommended release assets:
+- WindowGuard.exe
+- WindowGuard_Help.html
+- WindowGuard_Help.pdf
+- SHA256SUMS.txt
+
+STEP 10 - PUBLISH
+For now, marking v0.5.0 as a pre-release is reasonable while the project is still evolving toward v1.0.

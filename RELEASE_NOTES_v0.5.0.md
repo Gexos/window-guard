@@ -12,6 +12,7 @@ v0.5.0 focuses on project polish and open-source integration.
 - Copy the repository URL
 - Open the Window Guard configuration folder
 - Open the application folder
+- Updated About window showing **Giorgos Xanthopoulos aka gexos**
 - Updated HTML/PDF help manual
 - GitHub bug-report and feature-request forms
 - Pull request template

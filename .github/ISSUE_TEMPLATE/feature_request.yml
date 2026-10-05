@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an improvement for Window Guard
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this feature solve?
+      description: Describe the use case rather than only the proposed button or setting.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Screenshots or mockups can be added here.
