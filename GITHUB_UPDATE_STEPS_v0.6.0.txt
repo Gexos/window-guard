@@ -1,0 +1,28 @@
+WINDOW GUARD v0.6.0 — UPDATE USING GITHUB DESKTOP
+==================================================
+
+First test the Windows build. This is still v0.6.0, not a new version.
+
+1. Open GitHub Desktop and select your window-guard repository.
+2. Click Repository > Show in Explorer.
+3. Extract the updated Window Guard package to a separate folder.
+4. Copy the CONTENTS of that folder into the folder GitHub Desktop opened.
+5. Allow Windows to replace existing files.
+6. Return to GitHub Desktop and open Changes.
+7. Check that README.md, WindowGuard_Help.html, WindowGuard_Help.pdf,
+   CHANGELOG.md and the other edited documents appear as changes.
+8. If only the text changed, the app version should still say 0.6.0.
+9. Write this commit summary:
+
+   Clean up Window Guard documentation and About text
+
+10. Click Commit to main, then Push origin.
+
+If v0.6.0 isn't published yet:
+- Build and test WindowGuard.exe.
+- Run hash_release.bat.
+- Go to GitHub > Releases > Draft a new release.
+- Tag v0.6.0 on main and attach the tested EXE, hash and Help files.
+- Use RELEASE_NOTES_v0.6.0_DRAFT.md after removing the draft warning.
+
+The GitHub Actions build is an artifact, not an automatic GitHub Release.

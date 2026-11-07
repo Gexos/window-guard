@@ -6,7 +6,7 @@ body:
     id: problem
     attributes:
       label: What problem would this feature solve?
-      description: Describe the use case rather than only the proposed button or setting.
+      description: Tell me what you are trying to do.
     validations:
       required: true
   - type: textarea
@@ -23,5 +23,5 @@ body:
   - type: textarea
     id: notes
     attributes:
-      label: Additional context
+      label: Other details
       description: Screenshots or mockups can be added here.

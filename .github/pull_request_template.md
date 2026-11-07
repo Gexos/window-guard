@@ -1,14 +1,13 @@
-## Summary
+## What changed?
 
-Describe the change and why it is needed.
+Explain the change briefly.
 
 ## Testing
 
 - [ ] Tested on Windows
-- [ ] Existing protection behavior still works
-- [ ] Documentation updated if needed
-- [ ] Changelog updated if needed
+- [ ] Existing app locking and unlocking still work
+- [ ] Updated the docs if behavior changed
 
-## Security model
+## Notes
 
-- [ ] This change does not claim or imply administrator-proof protection.
+Window Guard is a privacy tool, not tamper-proof Windows security.

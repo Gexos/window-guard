@@ -5,12 +5,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a Window Guard problem. Please review diagnostic output before posting it because window titles can contain private information.
+        Before posting diagnostics, check for private window titles, usernames and file paths.
   - type: input
     id: version
     attributes:
       label: Window Guard version
-      placeholder: "0.5.0"
+      placeholder: "0.6.0"
     validations:
       required: true
   - type: input
@@ -40,7 +40,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Give clear numbered steps.
+      description: What did you click or run?
     validations:
       required: true
   - type: textarea

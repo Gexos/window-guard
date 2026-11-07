@@ -1,128 +1,106 @@
+<p align="center"><img src="assets/window_guard_icon.png" alt="Window Guard icon" width="120"></p>
+
 # Window Guard
 
-**Window Guard** is an open-source Windows privacy utility that protects selected desktop applications with a PIN.
+Window Guard is a small Windows tool for locking selected applications with a PIN. It hides the application's windows while they're locked, then shows them again when you enter the right PIN.
 
-Protected applications remain registered after they close. When an unlocked application fully exits, Window Guard automatically returns it to **Locked**, so the next launch requires the PIN again.
+I originally wanted a simple way to lock programs such as Firefox. The project has grown a little since then, but the idea is still the same: pick the programs you want to protect and leave Window Guard running in the tray.
 
-> Current development release: **v0.5.0**
+**Version:** 0.6.0 (testing). **Latest published release:** v0.5.0. Don't publish v0.6.0 until you've tested its Windows build.
 
-## Highlights
+## What it does
 
-- Persistent per-application protection
-- Independent **Locked / Unlocked** state for each protected app
-- Automatic relock when an unlocked app closes
-- Select the real application from currently visible windows
-- Protect multiple applications with one PIN
-- System tray support
-- Optional Start with Windows
-- Diagnostics for application/process detection
-- Complete HTML and PDF help manual
-- Direct GitHub menu for repository, releases, issues, and bug reports
-- Open source under the MIT License
+- Keeps a list of the applications you want to protect.
+- Locks each application separately. Unlocking one doesn't unlock the others.
+- Relocks an application after its processes have fully closed, so opening it again requires the PIN.
+- Lets you pick an application from its running windows. This is useful for portable apps with separate launchers.
+- Runs in the system tray and can start with Windows.
+- Has a Settings window and an optional **Ctrl+Shift+L** shortcut to lock everything.
+- Can export a diagnostics report when something isn't detected properly.
 
-## Quick Start
+**Please read this before using it:** Window Guard is a privacy tool, not a replacement for your Windows login. Someone who can stop the program or change its configuration can bypass it. A protected window may also show briefly before Window Guard hides it.
 
-1. Open the application you want to protect.
-2. Start Window Guard.
-3. Click **Add Running App**.
-4. Select the real application executable from the list.
-5. Click **Set / Change PIN**.
-6. Enter the PIN when Window Guard hides the protected app.
-7. Close the protected app completely.
-8. The application automatically returns to **Locked** for its next launch.
+## Getting started
 
-## Menu Bar
+1. Start Window Guard.
+2. Open the program you want to protect.
+3. Click **Add Running App** and select the program's actual executable.
+4. Open **Tools → Set / Change PIN** and set a PIN (4–12 digits).
+5. Enter the PIN when prompted to use the protected program.
+6. Close that program completely. Window Guard will lock it again for the next launch.
 
-Window Guard v0.5.0 adds a more complete menu system:
+For **Firefox Portable**, select `firefox.exe`, **not** the `FirefoxPortable.exe` launcher. The launcher usually doesn't own the browser window.
 
-- **File** - Lock All Now, Hide to Tray, Exit
-- **Applications** - Add Running App, Browse EXE, Lock Selected, Remove Selected
-- **Tools** - PIN management, Diagnostics, configuration/application folders, Start with Windows
-- **GitHub** - Repository, Latest Release, Releases, Issues, Report Bug / Request Feature
-- **Help** - HTML help, PDF manual, About Window Guard
+## Screenshots
 
-## Firefox Portable
+I'll add screenshots taken from the Windows build after testing. They'll show the main window, app selector, PIN dialog and tray/Settings menu. See [how to take and upload the screenshots](docs/screenshots/README.md).
 
-For Firefox Portable, protect the real browser process shown by **Add Running App**:
+## Download and requirements
 
-```text
-firefox.exe
-```
+The project is for Windows 10 and 11.
 
-Do not rely on `FirefoxPortable.exe` if the visible Firefox window belongs to `firefox.exe`.
+- **EXE:** Download a tested build from [GitHub Releases](https://github.com/Gexos/window-guard/releases). Python isn't needed to run the EXE.
+- **Source:** Python 3.10 or later, plus `pystray` and `Pillow`.
 
-## Requirements
-
-### Standalone EXE
-
-- Windows 10 or Windows 11
-- No Python installation required
-
-### Running from source
-
-- Python 3.10+
-- pystray
-- Pillow
+To run from source:
 
 ```bat
 python -m pip install -r requirements.txt
 python window_guard.py
 ```
 
-## Building the EXE
+Or run `run_window_guard.bat`.
 
-```bat
-python -m pip install -r requirements-build.txt
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name WindowGuard window_guard.py
-```
+## Build the EXE
 
-Or run:
+On Windows, double-click `build_window_guard.bat`. It installs the build requirements and runs PyInstaller with the Windows icon and bundled image assets.
+
+You should find these files in `dist`:
 
 ```text
-build_window_guard.bat
+dist/
+  WindowGuard.exe
+  WindowGuard_Help.html
+  WindowGuard_Help.pdf
+  README.md
+  LICENSE
 ```
 
-The build script also copies the HTML and PDF help files into `dist`.
+Keep the two Help files next to `WindowGuard.exe`; the **Help** menu opens them from that folder. The icon files are bundled inside the EXE.
 
-## Configuration
+After building, test the EXE before sharing it. Then run `hash_release.bat` to generate `SHA256SUMS.txt`.
 
-Window Guard stores user configuration at:
+## Settings and updates
+
+Open **Tools → Settings** for startup, tray, removal confirmation, shortcut and monitoring options.
+
+The optional **Ctrl+Shift+L** shortcut may conflict with another program's shortcut. It's off by default. You can always use **Lock All Now** in the menu or system tray.
+
+**GitHub → Check for Updates** opens the [Releases page](https://github.com/Gexos/window-guard/releases). Window Guard does not download or install updates automatically.
+
+## Where settings are stored
 
 ```text
 %APPDATA%\WindowGuard\config.json
 ```
 
-The PIN is not stored in plain text. Window Guard stores a random salt and a PBKDF2-HMAC-SHA256 derived hash.
+The file holds your protected-app list and PIN verification data. The PIN itself isn't saved as plain text. **Don't upload your own `config.json` or diagnostics reports to GitHub.**
 
-Do not commit your personal `config.json` to GitHub.
+## Development
 
-## Security Model
+The repo includes Windows GitHub Actions checks and a build workflow. The build workflow produces an artifact under the Actions run; **it does not automatically publish a release**.
 
-Window Guard is a **privacy and convenience lock**, not an operating-system security boundary.
-
-A user with enough access may bypass it by terminating Window Guard, deleting or modifying its configuration, using another Windows account, or using administrative/debugging tools.
-
-For genuine workstation security, use a Windows account password/PIN and `Windows + L`.
-
-## Antivirus / False Positives
-
-The standalone EXE is built with PyInstaller. Some antivirus engines occasionally flag PyInstaller-packaged executables. The full source is published so users can inspect and build Window Guard themselves.
-
-Official binary releases should include a SHA-256 hash.
+See the [roadmap](ROADMAP.md), [changelog](CHANGELOG.md) and [contributing notes](CONTRIBUTING.md). Bugs and suggestions are welcome through [GitHub Issues](https://github.com/Gexos/window-guard/issues).
 
 ## Documentation
 
-- `WindowGuard_Help.html`
-- `WindowGuard_Help.pdf`
-- `SECURITY.md`
-- `CONTRIBUTING.md`
-- `CHANGELOG.md`
+- [HTML Help](WindowGuard_Help.html)
+- [PDF Help](WindowGuard_Help.pdf)
+- [Security notes](SECURITY.md)
+- [Release notes (draft)](RELEASE_NOTES_v0.6.0_DRAFT.md)
 
-## Author
+## Author and license
 
-**Giorgos Xanthopoulos**  
-**aka gexos**
+**Giorgos Xanthopoulos aka gexos**
 
-## License
-
-Window Guard is released under the [MIT License](LICENSE).
+MIT License. See [LICENSE](LICENSE).

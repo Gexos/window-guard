@@ -1,31 +1,11 @@
 # Contributing
 
-Contributions to Window Guard are welcome.
+Bug reports and improvements are welcome.
 
-Good contributions include bug fixes, Windows compatibility improvements, UI improvements, application-detection improvements, documentation, tests, and reproducible bug reports.
+If something doesn't work, please use the **Bug report** issue form and include your Windows version, Window Guard version, the program you were protecting, what you did and what happened. Diagnostics can help, but **remove private window titles, file paths and other sensitive details** before posting a report.
 
-## Bug Reports
+For feature requests, describe the problem you're trying to solve. A small example is useful.
 
-Please use the GitHub **Bug report** form. Include:
+If you send a pull request, please keep it focused and test it on Windows when possible. Let me know which parts you've tested. Update the Help or changelog if the behavior changes.
 
-- Windows version
-- Window Guard version
-- Source or EXE build
-- Application being protected
-- Steps to reproduce
-- Expected behavior
-- Actual behavior
-- Relevant diagnostic output, after reviewing it for private information
-
-## Feature Requests
-
-Use the GitHub **Feature request** form and explain the problem the feature would solve.
-
-## Pull Requests
-
-1. Keep changes focused.
-2. Test on Windows.
-3. Avoid unnecessary dependencies.
-4. Preserve the documented security limitations.
-5. Update documentation and the changelog when appropriate.
-6. Do not claim Window Guard is administrator-proof.
+Please don't describe Window Guard as tamper-proof or a replacement for Windows account security. It isn't.
