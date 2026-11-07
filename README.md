@@ -6,10 +6,10 @@ Window Guard is a small Windows tool for locking selected applications with a PI
 
 I originally wanted a simple way to lock programs such as Firefox. The project has grown a little since then, but the idea is still the same: pick the programs you want to protect and leave Window Guard running in the tray.
 
-Development version: 0.6.0
-Latest published release: v0.5.0
+**Development version:** 0.6.0  
+**Latest published release:** [v0.5.0](https://github.com/Gexos/window-guard/releases/tag/v0.5.0)
 
-Window Guard is under active development. You can download the latest published version from the GitHub Releases page
+Download the latest published build from [GitHub Releases](https://github.com/Gexos/window-guard/releases).
 
 ## What it does
 
@@ -33,10 +33,6 @@ Window Guard is under active development. You can download the latest published 
 6. Close that program completely. Window Guard will lock it again for the next launch.
 
 For **Firefox Portable**, select `firefox.exe`, **not** the `FirefoxPortable.exe` launcher. The launcher usually doesn't own the browser window.
-
-## Screenshots
-
-I'll add screenshots taken from the Windows build after testing. They'll show the main window, app selector, PIN dialog and tray/Settings menu. See [how to take and upload the screenshots](docs/screenshots/README.md).
 
 ## Download and requirements
 
@@ -71,7 +67,7 @@ dist/
 
 Keep the two Help files next to `WindowGuard.exe`; the **Help** menu opens them from that folder. The icon files are bundled inside the EXE.
 
-After building, test the EXE before sharing it. Then run `hash_release.bat` to generate `SHA256SUMS.txt`.
+To generate a SHA-256 checksum for your build, run `hash_release.bat`. It creates `SHA256SUMS.txt`.
 
 ## Settings and updates
 
@@ -87,7 +83,7 @@ The optional **Ctrl+Shift+L** shortcut may conflict with another program's short
 %APPDATA%\WindowGuard\config.json
 ```
 
-The file holds your protected-app list and PIN verification data. The PIN itself isn't saved as plain text. **Don't upload your own `config.json` or diagnostics reports to GitHub.**
+The file holds your protected-app list and PIN verification data. The PIN itself isn't saved as plain text. Configuration files and diagnostics reports can contain personal information, so keep them private.
 
 ## Development
 
@@ -100,7 +96,6 @@ See the [roadmap](ROADMAP.md), [changelog](CHANGELOG.md) and [contributing notes
 - [HTML Help](WindowGuard_Help.html)
 - [PDF Help](WindowGuard_Help.pdf)
 - [Security notes](SECURITY.md)
-- [Release notes (draft)](RELEASE_NOTES_v0.6.0_DRAFT.md)
 
 ## Author and license
 
