@@ -1,12 +1,12 @@
 <!DOCTYPE html>
+<!DOCTYPE html>
 
-<html lang="" xml:lang="" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xml:lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8"/>
 <meta content="pandoc" name="generator"/>
 <meta content="width=device-width, initial-scale=1.0, user-scalable=yes" name="viewport"/>
 <title>Window Guard - User Guide</title>
-
 <style>
 :root{--ink:#202936;--muted:#596575;--line:#dce4eb;--blue:#145d8f}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
@@ -29,7 +29,9 @@ th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-ali
 </style></head>
 <body><main>
 
-<nav id="TOC" role="doc-toc">
+<h1 id="window-guard-user-guide">Window Guard User Guide</h1>
+<p><strong>Version 0.6.0</strong><br/>
+<strong>Giorgos Xanthopoulos aka gexos</strong></p><nav id="TOC" role="doc-toc">
 <ul>
 <li><a href="#window-guard-user-guide" id="toc-window-guard-user-guide">Window Guard User Guide</a>
 <ul>
@@ -61,14 +63,9 @@ PIN</a></li>
 <li><a href="#security-limits" id="toc-security-limits">15. Security
 limits</a></li>
 <li><a href="#github-and-source-code" id="toc-github-and-source-code">16. GitHub and source code</a></li>
-<li><a href="#adding-screenshots-to-github" id="toc-adding-screenshots-to-github">17. Adding screenshots to
-GitHub</a></li>
 </ul></li>
 </ul>
 </nav>
-<h1 id="window-guard-user-guide">Window Guard User Guide</h1>
-<p><strong>Version 0.6.0</strong><br/>
-<strong>Giorgos Xanthopoulos aka gexos</strong></p>
 <p>Window Guard is a small Windows program that hides selected
 application windows until you unlock them with a PIN. It remembers which
 apps are protected and relocks them when they close.</p>
@@ -264,8 +261,7 @@ build dependencies, runs PyInstaller and copies the manuals into
 <p>The <code>.ico</code> and <code>.png</code> icon files are bundled in
 the executable. The HTML and PDF manuals must stay beside the EXE for
 the Help menu to find them.</p>
-<p>Run <code>hash_release.bat</code> after building if you need a
-SHA-256 hash for your GitHub release.</p>
+<p>To generate a SHA-256 checksum for the EXE, run <code>hash_release.bat</code>.</p>
 <h2 id="troubleshooting">13. Troubleshooting</h2>
 <p><strong>A protected program does not appear in the app
 picker.</strong> Make sure it has a visible window, then refresh the
@@ -313,17 +309,7 @@ Window Guard.</p>
 <p><a href="https://github.com/Gexos/window-guard">github.com/Gexos/window-guard</a></p>
 <p>The project is released under the <strong>MIT License</strong>. Check
 the <code>LICENSE</code> file for the terms.</p>
-<p>The GitHub Actions Windows build workflow creates a downloadable
-build artifact. It does <strong>not</strong> automatically publish a
-GitHub release. Test each build before sharing it.</p>
-<h2 id="adding-screenshots-to-github">17. Adding screenshots to
-GitHub</h2>
-<p>Capture the real application from your Windows PC. Use
-<strong>Windows + Shift + S</strong> to take shots of the main window,
-app picker, PIN dialog and tray/Settings menu. Hide private paths,
-titles and PINs. Save the images in <code>docs/screenshots/</code> and
-follow that folder’s <code>README.md</code> to update the main
-README.</p>
+<p></p>
 <hr/>
 <p>Window Guard v0.6.0<br/>
 Giorgos Xanthopoulos aka gexos</p>
