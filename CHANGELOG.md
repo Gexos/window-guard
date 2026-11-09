@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 — Released (11-09-2026)
+## 0.6.0 — Released (09-11-2026)
 
 - Added a Window Guard icon for the EXE, windows and tray.
 - Added a Settings window.
