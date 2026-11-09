@@ -86,7 +86,7 @@ The file holds your protected-app list and PIN verification data. The PIN itself
 
 ## Development
 
-The repo includes Windows GitHub Actions checks and a build workflow. The build workflow produces an artifact under the Actions run; **it does not automatically publish a release**.
+The repository includes a GitHub Actions Python syntax check. To build the Windows EXE locally, use `build_window_guard.bat`.
 
 See the [roadmap](ROADMAP.md), [changelog](CHANGELOG.md) and [contributing notes](CONTRIBUTING.md). Bugs and suggestions are welcome through [GitHub Issues](https://github.com/Gexos/window-guard/issues).
 
