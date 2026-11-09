@@ -6,8 +6,7 @@ Window Guard is a small Windows tool for locking selected applications with a PI
 
 I originally wanted a simple way to lock programs such as Firefox. The project has grown a little since then, but the idea is still the same: pick the programs you want to protect and leave Window Guard running in the tray.
 
-**Development version:** 0.6.0  
-**Latest published release:** [v0.5.0](https://github.com/Gexos/window-guard/releases/tag/v0.5.0)
+**Latest release:** [v0.6.0](https://github.com/Gexos/window-guard/releases/tag/v0.6.0)
 
 Download the latest published build from [GitHub Releases](https://github.com/Gexos/window-guard/releases).
 
