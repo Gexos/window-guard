@@ -1,7 +1,5 @@
 # Screenshots for the README
 
-Take these on your own Windows PC so people can see the real program.
-
 1. Run `WindowGuard.exe` and open the main window. Press **Windows + Shift + S**, select the window and save it as `main-window.png`.
 2. Open **Add Running App** and save `add-running-app.png`.
 3. Open the PIN dialog using a harmless test app such as Notepad. Save `pin-unlock.png`—make sure the PIN isn't visible.
@@ -24,7 +22,3 @@ Take these on your own Windows PC so people can see the real program.
 **Tray and Settings**  
 ![Tray and Settings](docs/screenshots/tray-settings.png)
 ```
-
-7. Return to GitHub Desktop. Commit with `Add Window Guard screenshots`, then click **Push origin**.
-
-Before publishing, check every screenshot for usernames, personal file paths, window titles and other information you don't want public.
