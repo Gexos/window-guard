@@ -1,13 +1,13 @@
 # Changelog
 
-## 0.6.0 — In testing
+## 0.6.0 — Released (2026-11-09)
 
 - Added a Window Guard icon for the EXE, windows and tray.
 - Added a Settings window.
 - Added an optional **Ctrl+Shift+L** Lock All shortcut.
 - Added **Export Diagnostics** to save a TXT report.
 - Added a **Check for Updates** link to GitHub Releases.
-- Updated the Help files, build script and GitHub Actions workflow.
+- Updated the Help files and Windows build script.
 - Reduced unnecessary app-list refreshes.
 - Kept existing PINs and protected apps when migrating older configuration files.
 - Fixed a case where windows could be hidden before a PIN was set.
