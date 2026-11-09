@@ -1,31 +1,30 @@
 # Roadmap
 
-This is what I'd like to work on next. There are no fixed release dates.
+There are no fixed dates for future versions.
 
-## v0.5.0 — Released
+## Released
+
+### v0.6.0
+
+- New icon for the EXE, application windows and system tray.
+- Settings for Windows startup, tray behavior and monitoring.
+- Optional **Ctrl+Shift+L** shortcut for Lock All.
+- Export Diagnostics to a text file.
+- **Check for Updates** link to GitHub Releases.
+- Updated Help manuals and Windows build script.
+
+### v0.5.0
 
 - PIN locking for multiple applications.
-- Relock after a protected program fully closes.
+- Automatic relocking after an application fully closes.
 - System tray, Help files and GitHub links.
 
-## v0.6.0 — Testing
+## Possible next improvements
 
-- [x] New icon for the EXE, windows and tray.
-- [x] Settings window.
-- [x] Optional **Ctrl+Shift+L** Lock All shortcut.
-- [x] Export Diagnostics.
-- [x] Link to GitHub Releases for updates.
-- [x] Windows build workflow and updated documentation.
-- [ ] Finish testing on Windows 10 and Windows 11.
-- [ ] Add real screenshots to the README.
-- [ ] Publish v0.6.0 after testing.
+- Test on more Windows 10 and Windows 11 systems.
+- Improve detection of portable and elevated applications.
+- Reduce the brief window flash when a protected program opens, where possible.
+- Improve recovery from crashes or unexpected exits.
+- Fix bugs reported by users.
 
-## Before v1.0.0
-
-- [ ] Test detection, locking, tray and startup more thoroughly.
-- [ ] Improve app detection when Windows permissions or portable launchers get in the way.
-- [ ] Reduce the brief window flash on launch where possible.
-- [ ] Test recovery from crashes and unexpected exits.
-- [ ] Fix important bugs reported by users.
-
-Window Guard will remain a privacy tool, not an administrator-proof security system.
+Window Guard is a privacy tool, not a replacement for Windows account security.
