@@ -1048,13 +1048,6 @@ def main():
             r.iconbitmap(default=str(icon_file))
         except tk.TclError:
             pass
-    png_icon = resource_path("assets/window_guard_icon.png")
-    if png_icon.is_file():
-        try:
-            r._wg_iconphoto = tk.PhotoImage(file=str(png_icon))
-            r.iconphoto(True, r._wg_iconphoto)
-        except tk.TclError:
-            pass
     try:
         style=ttk.Style(r)
         if "vista" in style.theme_names(): style.theme_use("vista")
