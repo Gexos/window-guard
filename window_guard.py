@@ -15,7 +15,7 @@ except ImportError:
     Image = ImageDraw = None
 
 APP_NAME = "Window Guard"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 CONFIG_VERSION = 5
 PBKDF2_ITERATIONS = 310_000
 MONITOR_MS = 350
@@ -372,6 +372,63 @@ def resource_path(filename: str) -> Path:
     return base / filename
 
 
+# Windows uses different icon sizes for the title bar and taskbar. Keep the
+# original artwork but supply native-size Win32 icons instead of letting Tk
+# scale the first PNG it happens to select.
+_IMAGE_ICON = 1
+_LR_LOADFROMFILE = 0x0010
+_WM_SETICON = 0x0080
+_ICON_SMALL = 0
+_ICON_BIG = 1
+_GA_ROOT = 2
+_wg_native_icons = {}
+
+
+def _install_native_icon(window) -> None:
+    if not window.winfo_exists():
+        return
+    icon_path = resource_path("assets/window_guard.ico")
+    if not icon_path.is_file():
+        return
+    try:
+        load_image = user32.LoadImageW
+        load_image.argtypes = (wintypes.HINSTANCE, wintypes.LPCWSTR,
+                               wintypes.UINT, ctypes.c_int, ctypes.c_int,
+                               wintypes.UINT)
+        load_image.restype = ctypes.c_void_p
+        get_ancestor = user32.GetAncestor
+        get_ancestor.argtypes = (wintypes.HWND, wintypes.UINT)
+        get_ancestor.restype = wintypes.HWND
+        send_message = user32.SendMessageW
+        send_message.argtypes = (wintypes.HWND, wintypes.UINT,
+                                 ctypes.c_size_t, ctypes.c_ssize_t)
+        send_message.restype = ctypes.c_ssize_t
+        hwnd = get_ancestor(wintypes.HWND(window.winfo_id()), _GA_ROOT)
+        if not hwnd:
+            return
+        try:
+            get_dpi = user32.GetDpiForWindow
+            get_dpi.argtypes = (wintypes.HWND,)
+            get_dpi.restype = wintypes.UINT
+            dpi = get_dpi(hwnd) or 96
+        except AttributeError:
+            dpi = 96
+
+        for kind, base_size in ((_ICON_SMALL, 16), (_ICON_BIG, 32)):
+            pixels = max(16, round(base_size * dpi / 96))
+            # Reuse the handles: top-level dialogs share the same icon assets.
+            if pixels not in _wg_native_icons:
+                handle = load_image(None, str(icon_path), _IMAGE_ICON,
+                                    pixels, pixels, _LR_LOADFROMFILE)
+                if not handle:
+                    continue
+                _wg_native_icons[pixels] = handle
+            send_message(hwnd, _WM_SETICON, kind, _wg_native_icons[pixels])
+    except (OSError, AttributeError, ValueError):
+        # Tk's iconbitmap below is the fallback if these Windows APIs fail.
+        return
+
+
 def apply_window_icon(window) -> None:
     icon_path = resource_path("assets/window_guard.ico")
     if icon_path.is_file():
@@ -379,6 +436,8 @@ def apply_window_icon(window) -> None:
             window.iconbitmap(str(icon_path))
         except tk.TclError:
             pass
+        # The wrapper HWND is ready after the Tk window has been mapped.
+        window.after_idle(lambda w=window: _install_native_icon(w))
 
 
 def new_window(parent):
@@ -389,8 +448,9 @@ def new_window(parent):
 
 def tray_image():
     """Load the PNG used by the tray icon."""
-    icon_path = resource_path("assets/window_guard_icon.png")
-    return Image.open(icon_path).convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+    # Use the same original-art icon set as the taskbar, rather than resizing a 1024px image.
+    icon_path = resource_path("assets/tray_icon_32.png")
+    return Image.open(icon_path).convert("RGBA")
 
 
 def program_dir() -> Path:
@@ -1038,16 +1098,23 @@ class WindowGuard:
             except: pass
         self.root.destroy()
 
+def set_taskbar_app_id():
+    """Use a separate Windows identity so the published app icon cache is untouched."""
+    try:
+        method = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
+        method.argtypes = [wintypes.LPCWSTR]
+        method.restype = ctypes.c_long
+        method("Gexos.WindowGuard.Desktop")
+    except (OSError, AttributeError):
+        pass
+
+
 def main():
     if pystray is None or Image is None:
         r=tk.Tk(); r.withdraw(); messagebox.showerror(APP_NAME,"Install required packages:\n\npython -m pip install pystray pillow"); r.destroy(); return
+    set_taskbar_app_id()
     r=tk.Tk()
-    icon_file = resource_path("assets/window_guard.ico")
-    if icon_file.is_file():
-        try:
-            r.iconbitmap(default=str(icon_file))
-        except tk.TclError:
-            pass
+    apply_window_icon(r)
     try:
         style=ttk.Style(r)
         if "vista" in style.theme_names(): style.theme_use("vista")
