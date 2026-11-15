@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 — Unreleased
+
+- Improved how the original icon appears in the Windows title bar and taskbar.
+- Updated the system tray icon to match.
+- Updated the Windows build script to include the tray icon file.
+
 ## 0.6.0 — Released (09-11-2026)
 
 - Added a Window Guard icon for the EXE, windows and tray.
