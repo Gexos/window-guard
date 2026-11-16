@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.1 — Unreleased
+## 0.6.1 — Released (2026-11-16)
 
 - Improved how the original icon appears in the Windows title bar and taskbar.
 - Updated the system tray icon to match.
