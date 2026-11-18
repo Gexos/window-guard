@@ -2,6 +2,13 @@
 
 # Window Guard
 
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/Gexos/window-guard)](https://github.com/Gexos/window-guard/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Gexos/window-guard/total)](https://github.com/Gexos/window-guard/releases)
+[![Ko-fi](https://img.shields.io/badge/Support%20me-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/gexos)
+
 Window Guard is a small Windows tool for locking selected applications with a PIN. It hides the application's windows while they're locked, then shows them again when you enter the right PIN.
 
 I originally wanted a simple way to lock programs such as Firefox. The project has grown a little since then, but the idea is still the same: pick the programs you want to protect and leave Window Guard running in the tray.
