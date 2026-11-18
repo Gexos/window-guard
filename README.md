@@ -96,6 +96,22 @@ See the [roadmap](ROADMAP.md), [changelog](CHANGELOG.md) and [contributing notes
 - [PDF Help](WindowGuard_Help.pdf)
 - [Security notes](SECURITY.md)
 
+
+## ☕ Support This Project
+
+Window Guard is a free, open-source project developed in my spare time.
+
+If you find it useful and would like to support its continued development, you can buy me a virtual coffee on Ko-fi.
+
+Your support helps me improve existing features, fix bugs, and continue creating free Windows utilities.
+
+**[☕ Support my work on Ko-fi](https://ko-fi.com/gexos)**
+
+Donations are completely optional. Sharing the project, reporting bugs, and suggesting improvements are also greatly appreciated.
+
+Thank you for your support!
+
+
 ## Author and license
 
 **Giorgos Xanthopoulos aka gexos**
